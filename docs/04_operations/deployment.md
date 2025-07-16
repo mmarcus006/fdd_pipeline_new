@@ -2,36 +2,66 @@
 
 ## Overview
 
-This guide provides step-by-step instructions for deploying the FDD Pipeline in a local Prefect environment. The pipeline scrapes Franchise Disclosure Documents (FDDs) from Minnesota and Wisconsin regulatory portals on a weekly schedule.
+This comprehensive guide covers deployment options for the FDD Pipeline, from local development to production environments. The system can be deployed using Docker Compose for development/staging or directly on servers for production use.
 
 ## Prerequisites
 
 ### System Requirements
 - Python 3.11 or higher
-- 8GB+ RAM available (16GB+ recommended for MinerU)
-- 25GB+ disk space (10GB for data/logs + 15GB for MinerU models)
+- 16GB+ RAM (32GB recommended for GPU processing)
+- 100GB+ disk space (15GB for MinerU models + document storage)
 - Windows, macOS, or Linux
-- CUDA-capable GPU (optional but recommended for MinerU)
+- NVIDIA GPU with 6GB+ VRAM (optional, for MinerU acceleration)
+- Docker 20.10+ and Docker Compose 2.0+ (for containerized deployment)
 
 ### Required Software
 - Git
-- Python with pip
+- UV package manager (replaces pip)
 - PostgreSQL client (for Supabase connection)
-- Chrome/Chromium browser (for Selenium)
+- Chrome/Chromium browser (installed via Playwright)
 
 ### Access Requirements
-- Supabase project credentials
+- Supabase project with database and storage
 - Google Cloud service account with Drive API access
-- SMTP server credentials for email notifications
-- Network access to university websites
+- LLM API keys (Gemini required, OpenAI/Ollama optional)
+- Internal API token for secured endpoints
 
-## Installation Steps
+## Quick Start with Docker
+
+The fastest way to get started is using Docker Compose:
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/fdd-pipeline.git
+cd fdd-pipeline
+
+# Copy environment template
+cp .env.template .env
+# Edit .env with your credentials
+
+# Start all services
+docker-compose up -d
+
+# Check health
+python scripts/health_check.py
+
+# View logs
+docker-compose logs -f
+```
+
+Service URLs:
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- Prefect UI: http://localhost:4200
+- pgAdmin: http://localhost:5050 (if enabled)
+
+## Manual Installation Steps
 
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/your-org/fdd_pipeline_new.git
-cd fdd_pipeline_new
+git clone https://github.com/your-org/fdd-pipeline.git
+cd fdd-pipeline
 ```
 
 ### 2. Set Up Python Environment
@@ -61,10 +91,16 @@ source .venv/bin/activate
 
 ```bash
 # Install production dependencies with UV
-uv pip sync requirements.txt
+uv pip install -e ".[dev]"
 
-# Or install from pyproject.toml
-uv pip install -e .
+# Install Playwright browsers
+playwright install chromium
+
+# Install MinerU separately (GPU support)
+pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+
+# Download MinerU models (one-time, ~15GB)
+magic-pdf model-download
 ```
 
 ### 4. Configure Environment Variables
@@ -72,7 +108,7 @@ uv pip install -e .
 Create a `.env` file in the project root:
 
 ```bash
-# Supabase Configuration
+# Database Configuration
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
@@ -81,13 +117,13 @@ SUPABASE_SERVICE_KEY=your-service-role-key
 GDRIVE_FOLDER_ID=your-shared-folder-id
 GDRIVE_CREDS_JSON=/path/to/service-account-key.json
 
-# Email Configuration
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-ALERT_EMAIL_TO=alerts@your-org.com
-ALERT_EMAIL_FROM=fdd-pipeline@your-org.com
+# LLM API Keys
+GEMINI_API_KEY=your-gemini-api-key
+OPENAI_API_KEY=your-openai-key  # Optional
+OLLAMA_BASE_URL=http://localhost:11434  # Optional
+
+# Internal API Security
+INTERNAL_API_TOKEN=your-secure-random-token
 
 # Prefect Configuration
 PREFECT_API_URL=http://localhost:4200/api
@@ -99,7 +135,8 @@ MAX_WORKERS=4
 RETRY_ATTEMPTS=3
 RETRY_DELAY_SECONDS=60
 
-# MinerU Local Configuration
+# MinerU Configuration
+MINERU_MODE=local  # or 'api'
 MINERU_MODEL_PATH=~/.mineru/models
 MINERU_DEVICE=cuda  # or 'cpu' if no GPU
 MINERU_BATCH_SIZE=2  # Adjust based on GPU memory
@@ -118,28 +155,32 @@ MINERU_BATCH_SIZE=2  # Adjust based on GPU memory
 ### 6. Initialize Database Schema
 
 ```bash
-# Run database migrations
-python scripts/init_database.py
+# Run Supabase migrations
+supabase db push
 
-# Verify tables created
-python scripts/verify_database.py
+# Or run SQL migrations manually
+psql $DATABASE_URL < migrations/001_initial_schema.sql
+psql $DATABASE_URL < migrations/002_add_indexes.sql
+psql $DATABASE_URL < migrations/003_add_views.sql
+psql $DATABASE_URL < migrations/004_add_rls.sql
+psql $DATABASE_URL < migrations/005_drive_files_table.sql
+psql $DATABASE_URL < migrations/006_vector_similarity_functions.sql
 ```
 
-### 7. Install ChromeDriver
+### 7. Start Services
 
 ```bash
-# Windows
-python scripts/install_chromedriver.py
+# Start Prefect server
+prefect server start
 
-# macOS (using Homebrew)
-brew install chromedriver
+# In another terminal, start the API
+python -m src.api.run --reload
 
-# Linux
-sudo apt-get update
-sudo apt-get install chromium-chromedriver
+# In another terminal, start Prefect agent
+prefect agent start -q default
 ```
 
-### 8. Install MinerU Local
+### 8. Deploy Prefect Flows
 
 ```bash
 # Install MinerU with full dependencies using UV
@@ -155,197 +196,245 @@ magic-pdf --version
 python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 ```
 
-## Prefect Deployment
-
-### 1. Start Prefect Server
-
 ```bash
-# Initialize Prefect database
-prefect server database reset -y
+# Deploy flows using Makefile
+make prefect-deploy
 
-# Start Prefect server
-prefect server start
+# Or manually deploy each flow
+prefect deployment build flows/scrape_wisconsin.py:scrape_wisconsin -n wi-weekly
+prefect deployment build flows/scrape_minnesota.py:scrape_minnesota -n mn-weekly
+prefect deployment apply
 ```
 
-The Prefect UI will be available at http://localhost:4200
+## Production Deployment with Docker
 
-### 2. Create Work Pool
+### 1. Build Production Images
 
 ```bash
-# Create local process work pool
-prefect work-pool create fdd-local-pool --type process
+# Build with production optimizations
+docker build -t fdd-pipeline:latest .
+
+# Tag for registry
+docker tag fdd-pipeline:latest your-registry/fdd-pipeline:latest
+
+# Push to registry
+docker push your-registry/fdd-pipeline:latest
 ```
 
-### 3. Deploy Flows
+### 2. Deploy with Docker Compose
 
 ```bash
-# Deploy Minnesota flow
-python deployments/deploy_mn_flow.py
+# Production deployment
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
-# Deploy Wisconsin flow
-python deployments/deploy_wi_flow.py
-
-# Deploy maintenance flow
-python deployments/deploy_maintenance_flow.py
+# Scale workers
+docker-compose scale prefect-agent=3
 ```
 
-### 4. Create Schedules
+### 3. Configure Monitoring
 
 ```bash
-# Schedule Minnesota scrape (Mondays 2am)
-prefect deployment schedule create minnesota-scrape/prod \
-  --cron "0 2 * * 1" \
-  --timezone "America/Chicago"
+# Start monitoring service
+python scripts/monitoring.py --interval 60
 
-# Schedule Wisconsin scrape (Mondays 3am)
-prefect deployment schedule create wisconsin-scrape/prod \
-  --cron "0 3 * * 1" \
-  --timezone "America/Chicago"
-
-# Schedule Google Drive cleanup (Daily 1am)
-prefect deployment schedule create drive-cleanup/prod \
-  --cron "0 1 * * *" \
-  --timezone "America/Chicago"
+# Or run as Docker service
+docker run -d \
+  --name fdd-monitoring \
+  --env-file .env \
+  fdd-pipeline:latest \
+  python scripts/monitoring.py
 ```
 
-### 5. Start Worker
+## Verification and Testing
+
+### 1. Run Health Check
 
 ```bash
-# Start worker for the local pool
-prefect worker start --pool fdd-local-pool
+# Comprehensive health check
+python scripts/health_check.py
+
+# JSON output for automation
+python scripts/health_check.py --json
 ```
 
-## Verification Steps
-
-### 1. Test Database Connection
+### 2. Test Core Functionality
 
 ```bash
-python -c "from src.utils.database import test_connection; test_connection()"
+# Test entity deduplication
+python -c "from utils.entity_operations import deduplicate_all_franchises; print(deduplicate_all_franchises())"
+
+# Test API endpoints
+curl http://localhost:8000/health
+curl -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+  -X POST http://localhost:8000/prefect/run/wi
 ```
 
-### 2. Test Email Notifications
+### 3. Manual Flow Execution
 
 ```bash
-python scripts/test_email.py
-```
+# Trigger Wisconsin scrape
+prefect deployment run scrape-wisconsin/wi-weekly
 
-### 3. Run Test Scrape
-
-```bash
-# Test single department
-python scripts/test_scrape.py --university mn --department "Computer Science"
-```
-
-### 4. Verify Prefect Deployment
-
-```bash
-# List deployments
-prefect deployment ls
-
-# Run deployment manually
-prefect deployment run minnesota-scrape/prod
+# Trigger Minnesota scrape  
+prefect deployment run scrape-minnesota/mn-weekly
 ```
 
 ## Production Checklist
 
 ### Pre-Deployment
-- [ ] All environment variables configured
-- [ ] Database schema initialized
-- [ ] Google Drive permissions verified
-- [ ] Email notifications tested
-- [ ] ChromeDriver installed and accessible
+- [ ] All environment variables configured in `.env`
+- [ ] Database migrations applied successfully
+- [ ] Google Drive service account has proper permissions
+- [ ] LLM API keys validated (especially Gemini)
+- [ ] Internal API token generated securely
 - [ ] MinerU models downloaded (~15GB)
-- [ ] GPU drivers installed (if using CUDA)
-- [ ] Sufficient disk space available (25GB+)
+- [ ] GPU drivers and CUDA installed (if applicable)
+- [ ] Docker images built and tested
+- [ ] Sufficient disk space (100GB+)
 
 ### Deployment
-- [ ] Prefect server running
-- [ ] Work pools created
-- [ ] Flows deployed successfully
-- [ ] Schedules configured
-- [ ] Workers started
-- [ ] Initial test run completed
+- [ ] All services healthy via health check
+- [ ] API responding at `/health` endpoint
+- [ ] Prefect UI accessible
+- [ ] Flows deployed and visible in UI
+- [ ] Test document processed successfully
+- [ ] Entity deduplication working
 
 ### Post-Deployment
-- [ ] Monitoring dashboards accessible
-- [ ] Log aggregation working
-- [ ] Email alerts functional
-- [ ] First scheduled run successful
-- [ ] Performance baselines established
+- [ ] Monitoring script running
+- [ ] Logs aggregating properly
+- [ ] First scheduled runs completed
+- [ ] Performance metrics baseline established
+- [ ] Backup procedures tested
 
-## Rollback Procedures
+## Operational Procedures
 
-### Quick Rollback
+### Scaling Workers
 
-1. Stop workers:
+```bash
+# Docker Compose
+docker-compose scale prefect-agent=5
+
+# Kubernetes
+kubectl scale deployment prefect-agent --replicas=5
+```
+
+### Rolling Updates
+
+```bash
+# Build new image
+docker build -t fdd-pipeline:v2.0 .
+
+# Update one service at a time
+docker-compose stop api
+docker-compose up -d api
+
+# Verify health before continuing
+python scripts/health_check.py
+```
+
+### Emergency Rollback
+
+```bash
+# Stop all services
+docker-compose down
+
+# Revert to previous version
+git checkout v1.9
+docker-compose up -d
+
+# Restore database if needed
+psql $DATABASE_URL < backups/pre-deployment-backup.sql
+```
+
+## Performance Tuning
+
+### MinerU Optimization
+
+```bash
+# GPU memory optimization
+export MINERU_BATCH_SIZE=1  # Reduce for limited VRAM
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+# CPU optimization (no GPU)
+export MINERU_DEVICE=cpu
+export OMP_NUM_THREADS=8  # Match CPU cores
+```
+
+### Database Connection Pooling
+
+```python
+# In config.py or environment
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=10
+DATABASE_POOL_TIMEOUT=30
+```
+
+### Rate Limiting
+
+```python
+# Scraper delays (in seconds)
+MINNESOTA_SCRAPER_DELAY=2.0
+WISCONSIN_SCRAPER_DELAY=1.5
+MAX_CONCURRENT_DOWNLOADS=3
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **API Not Responding**
    ```bash
-   # Find worker process
-   ps aux | grep "prefect worker"
-   # Kill worker process
-   kill -TERM <worker-pid>
+   # Check logs
+   docker-compose logs api
+   # Restart service
+   docker-compose restart api
    ```
 
-2. Pause deployments:
+2. **Prefect Flows Not Running**
    ```bash
-   prefect deployment pause minnesota-scrape/prod
-   prefect deployment pause wisconsin-scrape/prod
+   # Check agent logs
+   docker-compose logs prefect-agent
+   # Verify deployments
+   prefect deployment ls
    ```
 
-3. Revert code:
+3. **MinerU GPU Errors**
    ```bash
-   git checkout <previous-version-tag>
-   uv pip sync requirements.txt
+   # Check CUDA
+   nvidia-smi
+   # Fallback to CPU
+   export MINERU_DEVICE=cpu
    ```
 
-4. Restart services:
+4. **Database Connection Issues**
    ```bash
-   prefect worker start --pool fdd-local-pool
-   prefect deployment resume minnesota-scrape/prod
-   prefect deployment resume wisconsin-scrape/prod
+   # Test connection
+   psql $DATABASE_URL -c "SELECT 1"
+   # Check Supabase status
+   curl https://status.supabase.com
    ```
 
-## Security Considerations
+## Maintenance Scripts
 
-### Credentials Management
-- Never commit credentials to version control
-- Use environment variables or secure vaults
-- Rotate credentials regularly
-- Limit service account permissions
+```bash
+# Database backup
+pg_dump $DATABASE_URL > backup-$(date +%Y%m%d).sql
 
-### Network Security
-- Run behind corporate firewall
-- Use HTTPS for all external connections
-- Implement rate limiting for scraping
-- Monitor for unusual activity
+# Clean old logs
+find logs/ -name "*.log" -mtime +30 -delete
 
-### Data Protection
-- Encrypt sensitive data at rest
-- Use secure connections to Supabase
-- Implement data retention policies
-- Regular security audits
+# Deduplicate franchises
+python -c "from utils.entity_operations import deduplicate_all_franchises; deduplicate_all_franchises()"
 
-## Maintenance Windows
+# Export metrics
+python scripts/monitoring.py --once --json > metrics-$(date +%Y%m%d).json
+```
 
-### Scheduled Maintenance
-- Tuesdays 10pm-12am CT (low activity period)
-- Notify stakeholders 48 hours in advance
-- Have rollback plan ready
-- Test in staging first
+## Additional Resources
 
-### Emergency Maintenance
-- Follow incident response procedures
-- Notify on-call team immediately
-- Document all changes
-- Post-mortem within 48 hours
-
-## Support
-
-### Internal Resources
-- Team Slack: #fdd-pipeline-support
-- Wiki: https://wiki.internal/fdd-pipeline
-- On-call rotation: See PagerDuty
-
-### External Resources
-- Prefect Docs: https://docs.prefect.io
-- Supabase Docs: https://supabase.com/docs
-- Project Repository: https://github.com/your-org/fdd_pipeline_new
+- [Architecture Documentation](../01_architecture/system_overview.md)
+- [API Reference](../05_api_reference/internal_api.md)
+- [Database Schema](../02_data_model/database_schema.md)
+- [Troubleshooting Guide](troubleshooting.md)
+- [MinerU Integration](../05_api_reference/mineru_integration.md)

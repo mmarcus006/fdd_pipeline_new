@@ -33,7 +33,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests for all model validation logic
     - _Requirements: 3.1, 3.2, 3.8, 10.4_
 
-- [-] 3. Web Scraping Infrastructure
+- [x] 3. Web Scraping Infrastructure
 
   - [x] 3.1 Create base scraper framework
 
@@ -87,9 +87,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests with test database
     - _Requirements: 6.1, 6.3, 6.4, 6.5_
 
-- [ ] 5. Document Processing Pipeline
+- [x] 5. Document Processing Pipeline
 
-  - [ ] 5.1 Implement MinerU integration
+  - [x] 5.1 Implement MinerU integration
 
     - Create `MinerUClient` with API authentication and rate limiting
     - Implement document upload and processing status polling
@@ -112,7 +112,8 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [ ] 6. LLM Extraction Engine
 
-  - [-] 6.1 Create multi-model LLM framework
+
+  - [x] 6.1 Create multi-model LLM framework
 
     - Implement `LLMExtractor` base class with model selection logic
     - Create adapters for Gemini Pro, Ollama, and OpenAI APIs
@@ -123,7 +124,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests for model selection and fallback logic
     - _Requirements: 2.6, 2.7, 9.6_
 
-  - [ ] 6.2 Implement prompt template system
+  - [x] 6.2 Implement prompt template system
 
     - Create YAML prompt templates for each FDD section (Items 0-24)
     - Implement Jinja2 template rendering with variable injection
@@ -134,7 +135,8 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write tests for template rendering and variable substitution
     - _Requirements: 2.8_
 
-  - [ ] 6.3 Create structured data extraction
+  - [x] 6.3 Create structured data extraction
+
     - Implement Instructor integration for structured LLM outputs
     - Create extraction functions for each high-value section (5, 6, 7, 19, 20, 21)
     - Add retry logic for validation failures with model fallback
@@ -143,12 +145,14 @@ This implementation plan converts the comprehensive system design into actionabl
     - Add extraction quality scoring and confidence metrics
     - Write integration tests with real FDD section samples
     - _Requirements: 2.8, 3.1_
+-
 
-- [ ] 7. Data Validation System
+- [-] 7. Data Validation System
 
-  - [ ] 7.1 Implement schema validation layer
+  - [-] 7.1 Implement schema validation layer
 
     - Create automatic Pydantic validation for all extracted data
+
     - Implement custom validators for business-specific rules
     - Add validation error collection and detailed reporting
     - Create validation result storage and tracking
@@ -178,9 +182,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write tests for quality scoring and metrics calculation
     - _Requirements: 3.8, 3.9_
 
-- [ ] 8. Franchise Entity Management
+- [-] 8. Franchise Entity Management
 
-  - [ ] 8.1 Implement franchise matching system
+  - [x] 8.1 Implement franchise matching system
 
     - Create exact name matching against existing franchisors
     - Implement semantic embedding generation using sentence-transformers
@@ -191,7 +195,8 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests for matching algorithms and thresholds
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
-  - [ ] 8.2 Create document lineage tracking
+  - [-] 8.2 Create document lineage tracking
+
     - Implement amendment processing and document supersession
     - Add document version tracking and history maintenance
     - Create duplicate detection and linking
@@ -201,22 +206,25 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests for complex lineage scenarios
     - _Requirements: 4.7_
 
-- [ ] 9. Workflow Orchestration
 
-  - [ ] 9.1 Create Prefect workflow infrastructure
 
-    - Implement base flow and task decorators
-    - Create workflow configuration and parameter management
-    - Add dynamic task mapping for parallel processing
-    - Implement workflow state management and persistence
-    - Create workflow scheduling and trigger mechanisms
-    - Add workflow monitoring and health checks
-    - Write unit tests for workflow components
-    - _Requirements: 5.1, 5.2_
+- [-] 9. Workflow Orchestration
 
-  - [ ] 9.2 Implement state-specific scraping flows
+  - [ ] 9.1 Create Minnesota scraping flow
 
-    - Create Minnesota scraping workflow with weekly scheduling
+
+    - Create `flows/scrape_minnesota.py` with weekly scheduling
+    - Implement Minnesota scraping workflow with error handling
+    - Add scraping result processing and database updates
+    - Create scraping performance monitoring and alerting
+    - Implement scraping failure recovery and retry logic
+    - Add scraping metrics collection and reporting
+    - Write integration tests for complete scraping workflows
+    - _Requirements: 5.1, 5.2, 5.3, 5.4_
+
+  - [x] 9.2 Implement Wisconsin scraping flow
+
+    - Create Wisconsin scraping workflow with weekly scheduling
     - Implement Wisconsin scraping workflow with error handling
     - Add scraping result processing and database updates
     - Create scraping performance monitoring and alerting
@@ -225,7 +233,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests for complete scraping workflows
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
+
   - [ ] 9.3 Create document processing workflows
+
     - Implement end-to-end document processing pipeline
     - Add parallel section processing with task mapping
     - Create processing status tracking and updates
@@ -235,9 +245,11 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests for complete processing pipeline
     - _Requirements: 5.5, 5.6, 5.7, 5.8_
 
+
 - [ ] 10. API Layer Implementation
 
-  - [ ] 10.1 Create internal FastAPI services
+
+  - [x] 10.1 Create internal FastAPI services
 
     - Implement FastAPI application with automatic OpenAPI documentation
     - Create CRUD endpoints for all major entities
@@ -249,18 +261,23 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 7.1, 7.4, 7.6_
 
   - [ ] 10.2 Implement Supabase Edge Functions
+
     - Create public API endpoints using Supabase Edge Functions
     - Implement authentication and row-level security
     - Add rate limiting and request validation
     - Create API documentation and usage examples
     - Implement API monitoring and error tracking
     - Add API versioning and backward compatibility
+
     - Write edge function tests and deployment scripts
+
     - _Requirements: 7.2, 7.3, 7.5, 7.7_
 
 - [ ] 11. Security and Compliance
 
+
   - [ ] 11.1 Implement security measures
+
 
     - Configure HTTPS/TLS for all external communications
     - Implement service account security with minimal permissions
@@ -272,10 +289,12 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.8_
 
   - [ ] 11.2 Create compliance framework
+
     - Implement PII detection and exclusion mechanisms
     - Add data retention policies and archival procedures
     - Create compliance reporting and audit capabilities
     - Implement data deletion and right-to-be-forgotten support
+
     - Add compliance monitoring and alerting
     - Create compliance documentation and procedures
     - Write compliance tests and validation procedures
@@ -283,7 +302,9 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [ ] 12. Monitoring and Operations
 
+
   - [ ] 12.1 Implement comprehensive monitoring
+
 
     - Create structured logging with context preservation
     - Implement metrics collection for all system components
@@ -295,6 +316,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 5.3, 5.4, 5.5, 5.6, 5.7, 5.8_
 
   - [ ] 12.2 Create operational procedures
+
     - Implement deployment procedures per `/docs/04_operations/deployment.md`
     - Create backup and disaster recovery procedures
     - Add maintenance and update procedures
@@ -306,7 +328,8 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [ ] 13. Testing and Quality Assurance
 
-  - [ ] 13.1 Create comprehensive test suite
+
+  - [x] 13.1 Create comprehensive test suite
 
     - Implement unit tests for all components with >90% coverage
     - Create integration tests for end-to-end workflows
@@ -315,9 +338,11 @@ This implementation plan converts the comprehensive system design into actionabl
     - Create regression tests for critical functionality
     - Add test data management and fixture creation
     - Write test automation and CI/CD integration
+
     - _Requirements: 10.4_
 
   - [ ] 13.2 Implement quality assurance processes
+
     - Create code review procedures and checklists
     - Implement automated code quality checks (Black, mypy, flake8)
     - Add pre-commit hooks for code quality enforcement
@@ -326,72 +351,3 @@ This implementation plan converts the comprehensive system design into actionabl
     - Add quality improvement processes and feedback loops
     - Write quality assurance documentation and training
     - _Requirements: 10.3, 10.8_
-
-- [ ] 14. Performance Optimization
-
-  - [ ] 14.1 Implement scalability features
-
-    - Add parallel processing capabilities for high document volumes
-    - Implement async operations with connection pooling
-    - Create database query optimization and indexing
-    - Add caching layers for frequently accessed data
-    - Implement load balancing and horizontal scaling
-    - Create performance monitoring and bottleneck identification
-    - Write performance tests and benchmarking tools
-    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7_
-
-  - [ ] 14.2 Optimize system performance
-    - Implement cost optimization for LLM usage
-    - Add storage optimization and archival procedures
-    - Create processing pipeline optimization
-    - Implement resource utilization optimization
-    - Add performance tuning and configuration management
-    - Create performance analysis and reporting tools
-    - Write performance optimization documentation
-    - _Requirements: 9.4, 9.5, 9.6_
-
-- [ ] 15. Documentation and Training
-
-  - [ ] 15.1 Create user documentation
-
-    - Write comprehensive API documentation with examples
-    - Create user guides and tutorials
-    - Add troubleshooting guides and FAQ
-    - Implement interactive documentation and demos
-    - Create video tutorials and training materials
-    - Add documentation search and navigation
-    - Write documentation maintenance and update procedures
-    - _Requirements: 10.7_
-
-  - [ ] 15.2 Create developer documentation
-    - Write code documentation with Google-style docstrings
-    - Create architecture and design documentation
-    - Add development setup and contribution guides
-    - Implement code examples and best practices
-    - Create debugging and troubleshooting guides
-    - Add development workflow and process documentation
-    - Write developer onboarding and training materials
-    - _Requirements: 10.1, 10.7_
-
-- [ ] 16. System Integration and Deployment
-
-  - [ ] 16.1 Create deployment infrastructure
-
-    - Implement production deployment procedures
-    - Create staging and testing environments
-    - Add CI/CD pipeline configuration
-    - Implement infrastructure as code (IaC)
-    - Create deployment monitoring and rollback procedures
-    - Add deployment testing and validation
-    - Write deployment documentation and runbooks
-    - _Requirements: 10.5_
-
-  - [ ] 16.2 Implement system integration
-    - Create integration with external systems and APIs
-    - Add data export and import capabilities
-    - Implement webhook and event notification systems
-    - Create system health monitoring and alerting
-    - Add system backup and recovery procedures
-    - Create system maintenance and update procedures
-    - Write system integration documentation and procedures
-    - _Requirements: 7.7_

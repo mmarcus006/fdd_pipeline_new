@@ -142,12 +142,13 @@ class LLMExtractor:
 - **Upload/Download**: Resumable operations with retry logic
 - **Metadata Tracking**: File IDs and paths stored in database
 
-**Database Operations** (`tasks/database_operations.py`)
+**Database Operations** (`utils/database.py`)
 
 - **Connection Pooling**: SQLAlchemy with Supabase
 - **Batch Operations**: Optimized inserts for performance
 - **Transaction Management**: ACID compliance for data integrity
-- **Migration Support**: Alembic-based schema evolution
+- **Migration Support**: Supabase migrations with version control
+- **CRUD Operations**: Repository pattern for consistent data access
 
 ### 4. Validation Components
 

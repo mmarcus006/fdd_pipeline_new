@@ -2,11 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**MILLERS CUSTOM RULES**
-
 ## Project Overview
 
 This is the FDD (Franchise Disclosure Document) Pipeline - a Python-based document processing system for acquiring, processing, validating, and storing franchise disclosure documents from state registries. The system uses Prefect for orchestration, multiple LLMs for extraction, and hybrid cloud storage.
+
+**Key Technologies**: Python 3.11+, Prefect 2.14+, Playwright, MinerU (GPU-accelerated PDF processing), Instructor (LLM structured outputs), Supabase, Google Drive
 
 ## Key Commands
 
@@ -27,13 +27,20 @@ magic-pdf model-download  # One-time setup, ~15GB
 pytest                          # Run all tests
 pytest tests/unit/ -v --cov=src # Unit tests with coverage
 pytest -m "not slow"            # Skip slow tests
+pytest -m unit                  # Run only unit tests
+pytest -m integration           # Run only integration tests
+pytest tests/test_wisconsin_scraper.py::test_login  # Run single test
 make test                       # Via Makefile
+make test-cov                  # With HTML coverage report
 
 # Code quality
-black .                         # Format code
+black .                         # Format code (88 char limit)
+isort .                         # Sort imports
 flake8                         # Lint
 mypy .                         # Type checking
+make format                    # Black + isort
 make check                     # All quality checks
+make config-check             # Validate configuration
 
 # Prefect workflow
 prefect server start           # Start server (terminal 1)
@@ -189,3 +196,17 @@ config.py              # Pydantic Settings configuration
 - **Always check existing patterns** before implementing new features
 - **Prefect decorators** required on all tasks/flows
 - **Idempotency is critical** - all operations must be retryable
+
+## Debugging Tips
+
+### Running Scrapers in Debug Mode
+```python
+# Test scrapers with --headed mode to see browser
+scraper = WisconsinScraper(headless=False)  # Visual debugging
+```
+
+### Common Error Patterns
+- **ModuleNotFoundError**: Check UV virtual environment is activated
+- **Playwright timeout**: Increase timeout or use --headed mode
+- **Supabase auth errors**: Check SERVICE_KEY vs ANON_KEY usage
+- **LLM extraction failures**: Check fallback chain and API keys

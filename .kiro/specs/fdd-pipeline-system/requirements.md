@@ -4,6 +4,8 @@
 
 The FDD Pipeline is an automated document intelligence system that transforms unstructured Franchise Disclosure Documents (FDDs) into structured, queryable data. This system combines web scraping, AI-powered document analysis, and cloud storage to create a comprehensive franchise intelligence platform.
 
+The system serves franchise analysts, data engineers, researchers, and developers who need reliable access to structured franchise disclosure information. By automating the acquisition, processing, and validation of FDD documents from state regulatory portals, the system eliminates manual data entry and ensures consistent, high-quality franchise intelligence.
+
 This requirements document is based on the comprehensive documentation in the `/docs` folder, including architecture designs, data models, implementation guides, operations procedures, and API specifications.
 
 ## Requirements
