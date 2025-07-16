@@ -17,7 +17,6 @@ import PyPDF2
 from config import get_settings
 from models.section import FDDSection, ExtractionStatus
 from utils.logging import PipelineLogger
-from tasks.llm_extraction import FDDSectionExtractor, extract_fdd_document
 
 
 class LayoutElement(BaseModel):
@@ -47,17 +46,31 @@ class SectionBoundary(BaseModel):
 
 
 class MinerUClient:
-    """Client for MinerU document processing with local GPU acceleration."""
+    """Client for MinerU document processing with API and local processing support."""
     
     def __init__(self):
         self.settings = get_settings()
         self.logger = PipelineLogger("mineru_client")
-        self.model_path = Path(self.settings.mineru_model_path)
-        self.device = self.settings.mineru_device
-        self.batch_size = self.settings.mineru_batch_size
+        self.mode = self.settings.mineru_mode
         
-        # Ensure model directory exists
-        self.model_path.mkdir(parents=True, exist_ok=True)
+        # API mode configuration
+        if self.mode == "api":
+            self.api_key = self.settings.mineru_api_key
+            self.base_url = self.settings.mineru_base_url
+            self.rate_limit = self.settings.mineru_rate_limit
+            self._semaphore = asyncio.Semaphore(self.rate_limit)
+            
+            if not self.api_key:
+                raise ValueError("MinerU API key is required for API mode")
+        
+        # Local mode configuration
+        else:
+            self.model_path = Path(self.settings.mineru_model_path)
+            self.device = self.settings.mineru_device
+            self.batch_size = self.settings.mineru_batch_size
+            
+            # Ensure model directory exists for local mode
+            self.model_path.mkdir(parents=True, exist_ok=True)
     
     async def process_document(
         self, 
@@ -83,39 +96,35 @@ class MinerUClient:
             self.logger.info(
                 "Starting MinerU document processing",
                 pdf_path=str(pdf_path),
-                device=self.device,
-                batch_size=self.batch_size
+                mode=self.mode
             )
             
             # Validate input file
             if not pdf_path.exists():
                 raise FileNotFoundError(f"PDF file not found: {pdf_path}")
             
-            # Create temporary output directory
-            with tempfile.TemporaryDirectory() as temp_dir:
-                output_dir = Path(temp_dir) / "output"
-                output_dir.mkdir(exist_ok=True)
+            # Route to appropriate processing method
+            if self.mode == "api":
+                layout_result = await self._process_via_api(pdf_path, timeout_seconds)
+            else:
+                layout_result = await self._process_locally(pdf_path, timeout_seconds)
                 
-                # Run MinerU processing
-                layout_result = await self._run_mineru_analysis(
-                    pdf_path, output_dir, timeout_seconds
-                )
-                
-                processing_time = time.time() - start_time
-                
-                self.logger.info(
-                    "MinerU processing completed",
-                    processing_time=processing_time,
-                    total_elements=len(layout_result.elements),
-                    total_pages=layout_result.total_pages
-                )
-                
-                return DocumentLayout(
-                    total_pages=layout_result.total_pages,
-                    elements=layout_result.elements,
-                    processing_time=processing_time,
-                    model_version=layout_result.model_version
-                )
+            processing_time = time.time() - start_time
+            
+            self.logger.info(
+                "MinerU processing completed",
+                processing_time=processing_time,
+                total_elements=len(layout_result.elements),
+                total_pages=layout_result.total_pages,
+                mode=self.mode
+            )
+            
+            return DocumentLayout(
+                total_pages=layout_result.total_pages,
+                elements=layout_result.elements,
+                processing_time=processing_time,
+                model_version=layout_result.model_version
+            )
                 
         except Exception as e:
             processing_time = time.time() - start_time
@@ -123,9 +132,179 @@ class MinerUClient:
                 "MinerU processing failed",
                 error=str(e),
                 processing_time=processing_time,
-                pdf_path=str(pdf_path)
+                pdf_path=str(pdf_path),
+                mode=self.mode
             )
             raise
+    
+    async def _process_via_api(
+        self, 
+        pdf_path: Path, 
+        timeout_seconds: int
+    ) -> DocumentLayout:
+        """Process document via MinerU API with rate limiting and authentication."""
+        async with self._semaphore:  # Rate limiting
+            try:
+                self.logger.info(
+                    "Processing document via MinerU API",
+                    pdf_path=str(pdf_path),
+                    rate_limit=self.rate_limit
+                )
+                
+                # Upload document and get job ID
+                job_id = await self._upload_document_to_api(pdf_path, timeout_seconds)
+                
+                # Poll for completion
+                layout_result = await self._poll_api_job_status(job_id, timeout_seconds)
+                
+                return layout_result
+                
+            except Exception as e:
+                self.logger.error("API processing failed", error=str(e))
+                raise
+    
+    async def _upload_document_to_api(self, pdf_path: Path, timeout_seconds: int) -> str:
+        """Upload document to MinerU API and return job ID."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "multipart/form-data"
+        }
+        
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            with open(pdf_path, "rb") as pdf_file:
+                files = {"file": (pdf_path.name, pdf_file, "application/pdf")}
+                data = {
+                    "output_format": "json",
+                    "include_layout": "true",
+                    "include_text": "true"
+                }
+                
+                response = await client.post(
+                    f"{self.base_url}/documents/upload",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    files=files,
+                    data=data
+                )
+                
+                if response.status_code != 200:
+                    raise Exception(f"API upload failed: {response.status_code} - {response.text}")
+                
+                result = response.json()
+                job_id = result.get("job_id")
+                
+                if not job_id:
+                    raise Exception("No job ID returned from API")
+                
+                self.logger.info("Document uploaded to API", job_id=job_id)
+                return job_id
+    
+    async def _poll_api_job_status(self, job_id: str, timeout_seconds: int) -> DocumentLayout:
+        """Poll MinerU API for job completion and return results."""
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        start_time = time.time()
+        poll_interval = 5  # Start with 5 second intervals
+        max_poll_interval = 30  # Max 30 second intervals
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            while time.time() - start_time < timeout_seconds:
+                try:
+                    response = await client.get(
+                        f"{self.base_url}/documents/{job_id}/status",
+                        headers=headers
+                    )
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Status check failed: {response.status_code}")
+                    
+                    status_data = response.json()
+                    status = status_data.get("status")
+                    
+                    self.logger.debug("API job status", job_id=job_id, status=status)
+                    
+                    if status == "completed":
+                        # Get the results
+                        return await self._fetch_api_results(job_id, client, headers)
+                    
+                    elif status == "failed":
+                        error_msg = status_data.get("error", "Unknown error")
+                        raise Exception(f"API processing failed: {error_msg}")
+                    
+                    elif status in ["pending", "processing"]:
+                        # Wait before next poll, with exponential backoff
+                        await asyncio.sleep(poll_interval)
+                        poll_interval = min(poll_interval * 1.5, max_poll_interval)
+                        continue
+                    
+                    else:
+                        raise Exception(f"Unknown API status: {status}")
+                        
+                except httpx.TimeoutException:
+                    self.logger.warning("API status check timeout, retrying...")
+                    await asyncio.sleep(poll_interval)
+                    continue
+            
+            raise Exception(f"API processing timeout after {timeout_seconds}s")
+    
+    async def _fetch_api_results(
+        self, 
+        job_id: str, 
+        client: httpx.AsyncClient, 
+        headers: Dict[str, str]
+    ) -> DocumentLayout:
+        """Fetch and parse API results."""
+        response = await client.get(
+            f"{self.base_url}/documents/{job_id}/results",
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"Results fetch failed: {response.status_code}")
+        
+        results = response.json()
+        
+        # Parse API response into our DocumentLayout format
+        return self._parse_api_response(results)
+    
+    def _parse_api_response(self, api_response: Dict[str, Any]) -> DocumentLayout:
+        """Parse MinerU API response into DocumentLayout."""
+        try:
+            # Extract layout elements from API response
+            elements = []
+            api_elements = api_response.get("layout", {}).get("elements", [])
+            
+            for elem in api_elements:
+                elements.append(LayoutElement(
+                    type=elem.get("type", "text"),
+                    bbox=elem.get("bbox", [0, 0, 0, 0]),
+                    page=elem.get("page", 0),
+                    text=elem.get("text"),
+                    confidence=elem.get("confidence", 0.8)
+                ))
+            
+            return DocumentLayout(
+                total_pages=api_response.get("total_pages", 1),
+                elements=elements,
+                processing_time=api_response.get("processing_time", 0.0),
+                model_version=api_response.get("model_version", "mineru-api")
+            )
+            
+        except Exception as e:
+            self.logger.error("Failed to parse API response", error=str(e))
+            raise Exception(f"API response parsing failed: {e}")
+    
+    async def _process_locally(
+        self, 
+        pdf_path: Path, 
+        timeout_seconds: int
+    ) -> DocumentLayout:
+        """Process document locally using MinerU installation."""
+        # Create temporary output directory
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "output"
+            output_dir.mkdir(exist_ok=True)
+            
+            # Run local MinerU analysis
+            return await self._run_mineru_analysis(pdf_path, output_dir, timeout_seconds)
     
     async def _run_mineru_analysis(
         self, 

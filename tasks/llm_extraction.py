@@ -1,9 +1,14 @@
-"""LLM extraction module using Instructor for structured output from FDD documents."""
+"""Multi-model LLM extraction framework with intelligent routing and fallback chains."""
 
 import asyncio
 import logging
-from typing import Optional, Type, TypeVar, Union, List, Any, Dict
+import time
+from typing import Optional, Type, TypeVar, Union, List, Any, Dict, Tuple
 from datetime import datetime
+from enum import Enum
+from dataclasses import dataclass, field
+from collections import defaultdict
+import json
 
 import instructor
 from google.generativeai import GenerativeModel
@@ -27,11 +32,85 @@ from models.item19_fpr import Item19FPRResponse
 from models.item20_outlets import Item20OutletsResponse
 from models.item21_financials import Item21FinancialsResponse
 from utils.prompt_loader import get_prompt_loader
+from utils.extraction_monitoring import get_extraction_monitor, MonitoredExtraction
 
 T = TypeVar('T', bound=BaseModel)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+class ModelType(Enum):
+    """Supported LLM model types."""
+    GEMINI = "gemini"
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+
+
+class SectionComplexity(Enum):
+    """Section complexity levels for model selection."""
+    SIMPLE = "simple"      # Simple structured tables (Items 5, 6, 7)
+    COMPLEX = "complex"    # Complex narratives and financials (Items 19, 21)
+    MEDIUM = "medium"      # Medium complexity sections
+
+
+@dataclass
+class ModelConfig:
+    """Configuration for a specific model."""
+    model_type: ModelType
+    model_name: str
+    max_tokens: int = 4000
+    temperature: float = 0.1
+    timeout_seconds: int = 60
+    cost_per_token: float = 0.0  # Cost per token in USD
+    
+    
+@dataclass
+class TokenUsage:
+    """Token usage tracking."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+    model_used: str = ""
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class ExtractionMetrics:
+    """Metrics for extraction performance."""
+    total_extractions: int = 0
+    successful_extractions: int = 0
+    failed_extractions: int = 0
+    total_tokens_used: int = 0
+    total_cost_usd: float = 0.0
+    average_response_time: float = 0.0
+    model_usage_count: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    
+    def add_extraction(self, success: bool, tokens: TokenUsage, response_time: float):
+        """Add extraction result to metrics."""
+        self.total_extractions += 1
+        if success:
+            self.successful_extractions += 1
+        else:
+            self.failed_extractions += 1
+            
+        self.total_tokens_used += tokens.total_tokens
+        self.total_cost_usd += tokens.cost_usd
+        self.model_usage_count[tokens.model_used] += 1
+        
+        # Update average response time
+        self.average_response_time = (
+            (self.average_response_time * (self.total_extractions - 1) + response_time) 
+            / self.total_extractions
+        )
+    
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate percentage."""
+        if self.total_extractions == 0:
+            return 0.0
+        return (self.successful_extractions / self.total_extractions) * 100
 
 
 class ExtractionError(Exception):
@@ -49,7 +128,7 @@ class LLMExtractor:
         """Initialize LLM clients with Instructor wrappers."""
         # Initialize Gemini
         genai.configure(api_key=settings.gemini_api_key)
-        self.gemini_model = GenerativeModel("gemini-1.5-pro")
+        self.gemini_model = GenerativeModel("gemini-2.5-pro")
         self.gemini_client = instructor.from_gemini(
             client=genai,
             model=self.gemini_model,
@@ -91,7 +170,7 @@ class LLMExtractor:
             logger.info(f"Extracting {response_model.__name__} with Gemini")
             
             response = await self.gemini_client.create(
-                model="gemini-1.5-pro",
+                model="gemini-2.5-pro",
                 response_model=response_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -266,29 +345,42 @@ class FDDSectionExtractor:
         # Get section-specific prompt
         system_prompt = self._get_section_prompt(section.item_no)
         
-        try:
-            # Extract with fallback
-            extracted_data, model_used = await self.extractor.extract_with_fallback(
-                content=content,
-                response_model=response_model,
-                system_prompt=system_prompt,
-                primary_model=primary_model
-            )
-            
-            return {
-                "status": "success",
-                "data": extracted_data.model_dump(),
-                "model_used": model_used,
-                "extracted_at": datetime.utcnow().isoformat()
-            }
-            
-        except ExtractionError as e:
-            logger.error(f"Failed to extract Item {section.item_no}: {e}")
-            return {
-                "status": "failed",
-                "error": str(e),
-                "attempted_at": datetime.utcnow().isoformat()
-            }
+        # Use monitoring context
+        monitor = get_extraction_monitor()
+        with MonitoredExtraction(
+            section_item=section.item_no,
+            fdd_id=section.fdd_id,
+            model=primary_model,
+            monitor=monitor
+        ) as extraction_monitor:
+            try:
+                # Extract with fallback
+                extracted_data, model_used = await self.extractor.extract_with_fallback(
+                    content=content,
+                    response_model=response_model,
+                    system_prompt=system_prompt,
+                    primary_model=primary_model
+                )
+                
+                # Estimate tokens (rough approximation)
+                estimated_tokens = len(content.split()) + len(system_prompt.split())
+                extraction_monitor.set_success(tokens_used=estimated_tokens)
+                
+                return {
+                    "status": "success",
+                    "data": extracted_data.model_dump(),
+                    "model_used": model_used,
+                    "extracted_at": datetime.utcnow().isoformat()
+                }
+                
+            except ExtractionError as e:
+                logger.error(f"Failed to extract Item {section.item_no}: {e}")
+                extraction_monitor.set_failed(str(e))
+                return {
+                    "status": "failed",
+                    "error": str(e),
+                    "attempted_at": datetime.utcnow().isoformat()
+                }
     
     def _get_section_prompt(self, item_no: int) -> str:
         """Get section-specific extraction prompt from YAML templates."""
@@ -325,6 +417,9 @@ async def extract_fdd_document(
     """
     extractor = FDDSectionExtractor()
     results = {}
+    monitor = get_extraction_monitor()
+    
+    logger.info(f"Starting FDD document extraction", fdd_id=str(fdd.id), sections_count=len(sections))
     
     # Process sections concurrently
     tasks = []
@@ -346,9 +441,29 @@ async def extract_fdd_document(
                 "error": str(e)
             }
     
+    # Log extraction summary
+    successful = sum(1 for r in results.values() if r.get("status") == "success")
+    failed = sum(1 for r in results.values() if r.get("status") == "failed")
+    logger.info(
+        "FDD document extraction completed",
+        fdd_id=str(fdd.id),
+        total_sections=len(results),
+        successful=successful,
+        failed=failed
+    )
+    
+    # Get session summary from monitor
+    session_summary = monitor.get_session_summary()
+    
     return {
         "fdd_id": str(fdd.id),
         "extraction_timestamp": datetime.utcnow().isoformat(),
         "primary_model": primary_model,
-        "sections": results
+        "sections": results,
+        "extraction_metrics": {
+            "total_sections": len(results),
+            "successful": successful,
+            "failed": failed,
+            "session_summary": session_summary
+        }
     }

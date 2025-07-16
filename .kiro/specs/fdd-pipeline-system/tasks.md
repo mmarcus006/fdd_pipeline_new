@@ -89,7 +89,7 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [ ] 5. Document Processing Pipeline
 
-  - [-] 5.1 Implement MinerU integration
+  - [ ] 5.1 Implement MinerU integration
 
     - Create `MinerUClient` with API authentication and rate limiting
     - Implement document upload and processing status polling
@@ -100,7 +100,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests with mocked MinerU API responses
     - _Requirements: 2.1, 2.2, 9.5_
 
-  - [ ] 5.2 Create document segmentation system
+  - [x] 5.2 Create document segmentation system
     - Implement PDF splitting functionality using PyPDF2
     - Create section PDF generation with accurate page ranges
     - Add section metadata creation and database storage
@@ -112,7 +112,7 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [ ] 6. LLM Extraction Engine
 
-  - [ ] 6.1 Create multi-model LLM framework
+  - [-] 6.1 Create multi-model LLM framework
 
     - Implement `LLMExtractor` base class with model selection logic
     - Create adapters for Gemini Pro, Ollama, and OpenAI APIs
