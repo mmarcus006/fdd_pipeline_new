@@ -18,48 +18,49 @@ class DisclosureType(str, Enum):
 
 class FPRBase(BaseModel):
     """Base model for Item 19 FPR."""
+
     disclosure_type: Optional[DisclosureType] = None
     methodology: Optional[str] = None
     sample_size: Optional[int] = Field(None, gt=0)
     sample_description: Optional[str] = None
     time_period: Optional[str] = None
-    
+
     # Revenue metrics
     average_revenue_cents: Optional[int] = Field(None, ge=0)
     median_revenue_cents: Optional[int] = Field(None, ge=0)
     low_revenue_cents: Optional[int] = Field(None, ge=0)
     high_revenue_cents: Optional[int] = Field(None, ge=0)
-    
+
     # Profit metrics
     average_profit_cents: Optional[int] = None
     median_profit_cents: Optional[int] = None
     profit_margin_percentage: Optional[float] = Field(None, ge=-100, le=100)
-    
+
     # Complex data
     additional_metrics: Dict[str, Any] = Field(default_factory=dict)
     tables_data: List[Dict[str, Any]] = Field(default_factory=list)
-    
+
     disclaimers: Optional[str] = None
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_revenue_range(self):
         """Ensure revenue metrics are consistent."""
         low = self.low_revenue_cents
         high = self.high_revenue_cents
         avg = self.average_revenue_cents
         median = self.median_revenue_cents
-        
+
         if all(v is not None for v in [low, high, avg]):
             if not (low <= avg <= high):
                 raise ValueError("Average revenue must be between low and high")
-        
+
         if all(v is not None for v in [low, high, median]):
             if not (low <= median <= high):
                 raise ValueError("Median revenue must be between low and high")
-        
+
         return self
-    
-    @field_validator('profit_margin_percentage')
+
+    @field_validator("profit_margin_percentage")
     @classmethod
     def validate_profit_margin(cls, v):
         """Flag unusual profit margins."""
@@ -75,7 +76,8 @@ class FPRBase(BaseModel):
 
 class FPR(FPRBase):
     """FPR with section reference."""
+
     section_id: UUID
     created_at: datetime
-    
+
     model_config = {"from_attributes": True}

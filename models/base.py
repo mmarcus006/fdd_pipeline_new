@@ -9,12 +9,13 @@ import re
 
 class Address(BaseModel):
     """Embedded address model for franchisor addresses."""
+
     street: str
     city: str
     state: str = Field(..., pattern="^[A-Z]{2}$")
     zip_code: str = Field(..., alias="zip")
-    
-    @field_validator('zip_code')
+
+    @field_validator("zip_code")
     @classmethod
     def validate_zip(cls, v):
         if not re.match(r"^\d{5}(-\d{4})?$", v):
@@ -38,20 +39,20 @@ def dollars_to_cents(dollars: Optional[float]) -> Optional[int]:
 
 class ValidationConfig:
     """Global validation configuration."""
-    
+
     # Maximum amounts (in cents)
     MAX_FEE_AMOUNT = 10_000_000_00  # $10M
     MAX_INVESTMENT_AMOUNT = 100_000_000_00  # $100M
     MAX_REVENUE_AMOUNT = 10_000_000_000_00  # $10B
-    
+
     # Percentage limits
     MAX_ROYALTY_PERCENTAGE = 50.0
     MAX_MARKETING_PERCENTAGE = 20.0
-    
+
     # Business rules
     REQUIRE_AUDIT_ABOVE_REVENUE = 50_000_000_00  # $50M
     FLAG_NEGATIVE_EQUITY_THRESHOLD = -10_000_000_00  # -$10M
-    
+
     # Data quality thresholds
     MIN_SAMPLE_SIZE_FOR_FPR = 5
     MAX_YEARS_HISTORICAL_DATA = 10

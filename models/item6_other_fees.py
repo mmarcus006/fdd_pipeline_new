@@ -27,6 +27,7 @@ class CalculationBasis(str, Enum):
 
 class OtherFeeBase(BaseModel):
     """Base model for ongoing/other fees."""
+
     fee_name: str = Field(..., min_length=1)
     amount_cents: Optional[int] = Field(None, ge=0)
     amount_percentage: Optional[float] = Field(None, ge=0, le=100)
@@ -35,28 +36,30 @@ class OtherFeeBase(BaseModel):
     minimum_cents: Optional[int] = Field(None, ge=0)
     maximum_cents: Optional[int] = Field(None, ge=0)
     remarks: Optional[str] = None
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_amount_type(self):
         """Ensure either amount_cents OR amount_percentage is set."""
         cents = self.amount_cents
         pct = self.amount_percentage
-        
+
         if (cents is None and pct is None) or (cents is not None and pct is not None):
-            raise ValueError("Must specify either amount_cents or amount_percentage, not both")
+            raise ValueError(
+                "Must specify either amount_cents or amount_percentage, not both"
+            )
         return self
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_min_max(self):
         """Ensure max >= min if both specified."""
         min_val = self.minimum_cents
         max_val = self.maximum_cents
-        
+
         if min_val is not None and max_val is not None and max_val < min_val:
             raise ValueError("maximum_cents must be >= minimum_cents")
         return self
-    
-    @field_validator('amount_percentage')
+
+    @field_validator("amount_percentage")
     @classmethod
     def validate_percentage(cls, v):
         """Common sense check for percentages."""
@@ -69,6 +72,7 @@ class OtherFeeBase(BaseModel):
 
 class OtherFee(OtherFeeBase):
     """Other fee with section reference."""
+
     section_id: UUID
-    
+
     model_config = {"from_attributes": True}

@@ -39,13 +39,14 @@ def check_google_drive_auth() -> bool:
     try:
         settings = get_settings()
         credentials = service_account.Credentials.from_service_account_file(
-            settings.gdrive_creds_json,
-            scopes=['https://www.googleapis.com/auth/drive']
+            settings.gdrive_creds_json, scopes=["https://www.googleapis.com/auth/drive"]
         )
         print("✓ Google Drive authentication successful")
         return True
     except FileNotFoundError:
-        print(f"✗ Google Drive credentials file not found: {settings.gdrive_creds_json}")
+        print(
+            f"✗ Google Drive credentials file not found: {settings.gdrive_creds_json}"
+        )
         return False
     except GoogleAuthError as e:
         print(f"✗ Google Drive authentication failed: {e}")
@@ -60,10 +61,10 @@ def check_mineru_api() -> bool:
     try:
         settings = get_settings()
         headers = {"Authorization": f"Bearer {settings.mineru_api_key}"}
-        
+
         with httpx.Client(timeout=10.0) as client:
             response = client.get(f"{settings.mineru_base_url}/status", headers=headers)
-            
+
         if response.status_code == 200:
             print("✓ MinerU API accessible")
             return True
@@ -82,14 +83,15 @@ def check_gemini_api() -> bool:
     """Check Gemini API key validity."""
     try:
         import google.generativeai as genai
+
         settings = get_settings()
-        
+
         genai.configure(api_key=settings.gemini_api_key)
-        
+
         # Try to list models to validate API key
         models = genai.list_models()
         model_list = list(models)
-        
+
         if model_list:
             print("✓ Gemini API validated")
             return True
@@ -105,10 +107,10 @@ def check_ollama_server() -> bool:
     """Check Ollama server connectivity."""
     try:
         settings = get_settings()
-        
+
         with httpx.Client(timeout=5.0) as client:
             response = client.get(f"{settings.ollama_base_url}/api/tags")
-            
+
         if response.status_code == 200:
             models = response.json().get("models", [])
             print(f"✓ Ollama server running ({len(models)} models available)")
@@ -128,17 +130,18 @@ def check_smtp_configuration() -> bool:
     """Check SMTP configuration."""
     try:
         import smtplib
+
         settings = get_settings()
-        
+
         if not settings.smtp_user or not settings.smtp_password:
             print("⚠ SMTP configuration incomplete (optional for development)")
             return True
-        
+
         server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
         server.starttls()
         server.login(settings.smtp_user, settings.smtp_password)
         server.quit()
-        
+
         print("✓ SMTP configuration valid")
         return True
     except Exception as e:
@@ -161,7 +164,7 @@ def main():
     """Run all configuration checks."""
     print("FDD Pipeline Configuration Check")
     print("=" * 40)
-    
+
     checks = [
         ("Environment file", check_environment_file),
         ("Supabase connection", check_supabase_connection),
@@ -171,7 +174,7 @@ def main():
         ("Ollama server", check_ollama_server),
         ("SMTP configuration", check_smtp_configuration),
     ]
-    
+
     results = []
     for name, check_func in checks:
         print(f"\nChecking {name}...")
@@ -181,11 +184,11 @@ def main():
         except Exception as e:
             print(f"✗ {name} check failed with exception: {e}")
             results.append(False)
-    
+
     print("\n" + "=" * 40)
     passed = sum(results)
     total = len(results)
-    
+
     if passed == total:
         print(f"✓ All {total} checks passed! Configuration is ready.")
         sys.exit(0)

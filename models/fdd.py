@@ -22,6 +22,7 @@ class ProcessingStatus(str, Enum):
 
 class FDDBase(BaseModel):
     """Base FDD model."""
+
     franchise_id: UUID
     issue_date: date
     amendment_date: Optional[date] = None
@@ -33,30 +34,32 @@ class FDDBase(BaseModel):
     sha256_hash: Optional[str] = Field(None, pattern="^[a-f0-9]{64}$")
     total_pages: Optional[int] = Field(None, gt=0)
     language_code: str = Field(default="en", pattern="^[a-z]{2}$")
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_amendment(self):
         """Ensure amendment_date is set for Amendment type."""
         if self.document_type == DocumentType.AMENDMENT and not self.amendment_date:
             raise ValueError("Amendment date required for Amendment documents")
         return self
-    
-    @field_validator('drive_path')
+
+    @field_validator("drive_path")
     @classmethod
     def validate_drive_path(cls, v):
         """Ensure valid Google Drive path format."""
-        if not v.startswith('/'):
+        if not v.startswith("/"):
             raise ValueError("Drive path must start with /")
         return v
 
 
 class FDDCreate(FDDBase):
     """Model for creating new FDD records."""
+
     pass
 
 
 class FDD(FDDBase):
     """Complete FDD model with all fields."""
+
     id: UUID
     is_amendment: bool
     superseded_by_id: Optional[UUID] = None
@@ -65,5 +68,5 @@ class FDD(FDDBase):
     processing_status: ProcessingStatus = ProcessingStatus.PENDING
     created_at: datetime
     processed_at: Optional[datetime] = None
-    
+
     model_config = {"from_attributes": True, "use_enum_values": True}

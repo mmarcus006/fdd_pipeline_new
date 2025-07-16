@@ -17,6 +17,7 @@ class ExtractionStatus(str, Enum):
 
 class FDDSectionBase(BaseModel):
     """Base model for FDD sections."""
+
     fdd_id: UUID
     item_no: int = Field(..., ge=0, le=24)
     item_name: Optional[str] = None
@@ -24,14 +25,14 @@ class FDDSectionBase(BaseModel):
     end_page: int = Field(..., gt=0)
     drive_path: Optional[str] = None
     drive_file_id: Optional[str] = None
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_page_range(self):
         if self.start_page and self.end_page and self.end_page < self.start_page:
             raise ValueError("end_page must be >= start_page")
         return self
-    
-    @field_validator('item_no')
+
+    @field_validator("item_no")
     @classmethod
     def validate_item_no(cls, v):
         """Map item numbers to standard names."""
@@ -60,13 +61,14 @@ class FDDSectionBase(BaseModel):
             21: "Financial Statements",
             22: "Contracts",
             23: "Receipts",
-            24: "Appendix/Exhibits"
+            24: "Appendix/Exhibits",
         }
         return v
 
 
 class FDDSection(FDDSectionBase):
     """Complete section model."""
+
     id: UUID
     extraction_status: ExtractionStatus = ExtractionStatus.PENDING
     extraction_model: Optional[str] = None
@@ -74,5 +76,5 @@ class FDDSection(FDDSectionBase):
     needs_review: bool = False
     created_at: datetime
     extracted_at: Optional[datetime] = None
-    
+
     model_config = {"from_attributes": True}

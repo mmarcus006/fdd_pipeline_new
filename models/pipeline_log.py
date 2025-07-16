@@ -17,13 +17,14 @@ class LogLevel(str, Enum):
 
 class PipelineLogBase(BaseModel):
     """Base model for pipeline logs."""
+
     prefect_run_id: Optional[UUID] = None
     task_name: Optional[str] = None
     level: LogLevel
     message: str
     context: Dict[str, Any] = Field(default_factory=dict)
-    
-    @field_validator('message')
+
+    @field_validator("message")
     @classmethod
     def validate_message_length(cls, v):
         """Ensure message isn't too long."""
@@ -34,14 +35,16 @@ class PipelineLogBase(BaseModel):
 
 class PipelineLog(PipelineLogBase):
     """Pipeline log with metadata."""
+
     id: UUID
     created_at: datetime
-    
+
     model_config = {"from_attributes": True}
 
 
 class PrefectRunBase(BaseModel):
     """Base model for Prefect run tracking."""
+
     flow_name: str
     deployment_name: Optional[str] = None
     state: str
@@ -53,7 +56,8 @@ class PrefectRunBase(BaseModel):
 
 class PrefectRun(PrefectRunBase):
     """Prefect run with metadata."""
+
     id: UUID
     created_at: datetime
-    
+
     model_config = {"from_attributes": True}

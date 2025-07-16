@@ -32,7 +32,7 @@ def mock_supabase_client():
 def sample_settings():
     """Sample settings for testing."""
     from config import Settings
-    
+
     return Settings(
         supabase_url="https://test.supabase.co",
         supabase_anon_key="test-anon-key",
@@ -42,5 +42,5 @@ def sample_settings():
         mineru_api_key="test-mineru-key",
         gemini_api_key="test-gemini-key",
         debug=True,
-        log_level="DEBUG"
+        log_level="DEBUG",
     )
