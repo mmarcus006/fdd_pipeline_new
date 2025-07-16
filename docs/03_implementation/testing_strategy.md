@@ -531,7 +531,10 @@ Before submitting a PR, ensure:
 
 1. **Import Errors in Tests**
    ```bash
-   # Ensure src is in Python path
+   # Ensure project is installed in editable mode with UV
+   uv pip install -e ".[dev]"
+   
+   # Alternative: Set Python path manually
    export PYTHONPATH="${PYTHONPATH}:${PWD}/src"
    ```
 

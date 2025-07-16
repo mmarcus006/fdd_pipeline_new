@@ -37,8 +37,15 @@ cd fdd_pipeline_new
 ### 2. Set Up Python Environment
 
 ```bash
-# Install UV if not already installed
-pip install uv
+# Install UV if not already installed (using pipx is recommended)
+# Option 1: Using pipx (recommended)
+pipx install uv
+
+# Option 2: Using pip (if pipx not available)
+pip install --user uv
+
+# Option 3: Using curl (standalone installer)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Create virtual environment with UV
 uv venv
@@ -135,8 +142,8 @@ sudo apt-get install chromium-chromedriver
 ### 8. Install MinerU Local
 
 ```bash
-# Install MinerU with full dependencies
-pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+# Install MinerU with full dependencies using UV
+uv pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
 # Download models (one-time setup, ~15GB)
 magic-pdf model-download
@@ -287,7 +294,7 @@ prefect deployment run minnesota-scrape/prod
 3. Revert code:
    ```bash
    git checkout <previous-version-tag>
-   pip install -r requirements.txt
+   uv pip sync requirements.txt
    ```
 
 4. Restart services:

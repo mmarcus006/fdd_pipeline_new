@@ -126,8 +126,20 @@ class Settings(BaseSettings):
     @classmethod
     def validate_device(cls, v: str) -> str:
         """Validate MinerU device selection."""
+        # Clean up any inline comments
+        v = v.split('#')[0].strip()
         if v not in {"cuda", "cpu"}:
             raise ValueError("mineru_device must be 'cuda' or 'cpu'")
+        return v
+    
+    @field_validator("mineru_batch_size", mode="before")
+    @classmethod
+    def validate_batch_size(cls, v) -> int:
+        """Validate and clean batch size."""
+        if isinstance(v, str):
+            # Clean up any inline comments
+            v = v.split('#')[0].strip()
+            return int(v)
         return v
 
 

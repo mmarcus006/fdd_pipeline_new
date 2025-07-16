@@ -23,7 +23,11 @@ This document outlines the day-to-day development workflow for the FDD Pipeline 
 
 2. **Install UV package manager**
    ```bash
-   pip install uv
+   # Recommended: Install using pipx
+   pipx install uv
+   
+   # Alternative: Standalone installer
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
 3. **Create virtual environment and install dependencies**

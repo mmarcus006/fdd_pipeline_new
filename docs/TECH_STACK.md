@@ -6,10 +6,13 @@ This document provides a comprehensive overview of all technologies, frameworks,
 - **Python 3.11+** - Required for latest type hints and performance improvements
 
 ## Package Management
-- **[uv](https://github.com/astral-sh/uv)** (latest) - Fast Python package installer and resolver
+- **[UV](https://github.com/astral-sh/uv)** (latest) - Fast Python package installer and resolver by Astral
   - Replaces pip, pip-tools, pipx, poetry, pyenv, virtualenv
   - 10-100x faster than pip
   - Handles virtual environments natively
+  - Built in Rust for performance and reliability
+  - Single binary, no Python required for installation
+  - Compatible with pip requirements files
 
 ## Workflow Orchestration
 - **[Prefect](https://www.prefect.io/)** (2.14+) - Modern workflow orchestration
@@ -197,14 +200,30 @@ This document provides a comprehensive overview of all technologies, frameworks,
 ## Installation Example
 
 ```bash
-# Using uv (recommended)
-uv pip install -r requirements.txt
+# Install UV (one-time setup)
+# Option 1: Using standalone installer (recommended)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Development dependencies
-uv pip install -r requirements-dev.txt
+# Option 2: Using pipx
+pipx install uv
 
-# Or install from pyproject.toml
+# Option 3: Using pip (if other methods unavailable)
+pip install --user uv
+
+# Create virtual environment
+uv venv
+
+# Activate environment
+source .venv/bin/activate  # Linux/macOS
+.venv\Scripts\activate     # Windows
+
+# Install dependencies with UV
+uv pip sync requirements.txt
+
+# Or install from pyproject.toml (recommended)
 uv pip install -e ".[dev]"
+
+# UV handles all dependency resolution automatically
 ```
 
 ## Package Organization

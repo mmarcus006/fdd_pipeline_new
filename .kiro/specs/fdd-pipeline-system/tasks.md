@@ -35,7 +35,7 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [-] 3. Web Scraping Infrastructure
 
-  - [-] 3.1 Create base scraper framework
+  - [x] 3.1 Create base scraper framework
 
     - Implement `BaseScraper` class with common functionality
     - Add Playwright browser management with cleanup handlers
@@ -45,7 +45,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests for scraper base functionality
     - _Requirements: 1.1, 1.6, 5.2_
 
-  - [ ] 3.2 Implement Minnesota portal scraper
+  - [x] 3.2 Implement Minnesota portal scraper
 
     - Create `MinnesotaScraper` inheriting from `BaseScraper`
     - Implement navigation to Minnesota commerce department FDD search
@@ -55,7 +55,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests with mock portal responses
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-  - [ ] 3.3 Implement Wisconsin portal scraper
+  - [-] 3.3 Implement Wisconsin portal scraper
     - Create `WisconsinScraper` with multi-step form navigation
     - Implement active filings table parsing and franchise name extraction
     - Add detail page navigation and enhanced metadata extraction
@@ -64,9 +64,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests for Wisconsin-specific workflow
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 4. Document Storage and Management
+- [x] 4. Document Storage and Management
 
-  - [ ] 4.1 Implement Google Drive integration
+  - [x] 4.1 Implement Google Drive integration
 
     - Create `DriveManager` class with service account authentication
     - Implement folder structure creation per `/docs/01_architecture/system_overview.md`

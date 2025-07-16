@@ -11,7 +11,7 @@ This guide walks you through setting up the FDD Pipeline development environment
 | Python | 3.11+ | Runtime | [python.org](https://python.org) |
 | PostgreSQL | 14+ | Database (via Supabase) | Handled by Supabase |
 | Git | 2.30+ | Version control | [git-scm.com](https://git-scm.com) |
-| UV | Latest | Package management | `pip install uv` |
+| UV | Latest | Package management | See installation section below |
 
 ### Recommended Software
 
@@ -44,7 +44,13 @@ git checkout -b feature/your-feature-name
 ### Install UV
 
 ```bash
-# Install UV globally
+# Option 1: Install UV using pipx (recommended)
+pipx install uv
+
+# Option 2: Using the standalone installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Option 3: Using pip (if other options unavailable)
 pip install --user uv
 
 # Verify installation
@@ -67,14 +73,14 @@ source .venv/bin/activate
 ### Install Dependencies
 
 ```bash
-# Install all dependencies
+# Install all dependencies from lock file (if exists)
 uv pip sync requirements.txt
 
-# Install development dependencies
-uv pip install -r requirements-dev.txt
-
-# Or install from pyproject.toml
+# Or install from pyproject.toml (recommended)
 uv pip install -e ".[dev]"
+
+# UV automatically handles dependency resolution
+# No need for separate requirements-dev.txt
 ```
 
 ## Step 3: External Services Setup
@@ -129,11 +135,11 @@ uv pip install -e ".[dev]"
 
 1. **Install MinerU**
    ```bash
-   # Install with GPU support
-   pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+   # Install with GPU support using UV
+   uv pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
    
    # Or CPU-only version (slower)
-   pip install magic-pdf
+   uv pip install magic-pdf
    ```
 
 2. **Download Models**
@@ -299,7 +305,8 @@ prefect agent start -p local-pool
 ### Install Pre-commit Hooks
 
 ```bash
-# Install pre-commit
+# Pre-commit is already installed via UV in dev dependencies
+# Just activate the hooks
 pre-commit install
 
 # Run hooks manually
@@ -374,9 +381,16 @@ print(f"Found {len(result.data)} franchisors")
 
 ### Issue: UV command not found
 ```bash
-# Solution: Add to PATH
+# Solution 1: If installed with pipx, ensure pipx is in PATH
 export PATH="$HOME/.local/bin:$PATH"
-# Add to ~/.bashrc or ~/.zshrc
+
+# Solution 2: If using standalone installer
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Add the appropriate line to ~/.bashrc or ~/.zshrc
+
+# Solution 3: Use UV's built-in shell integration
+uv generate-shell-completion bash >> ~/.bashrc  # or zsh/fish
 ```
 
 ### Issue: Supabase connection timeout
@@ -461,7 +475,8 @@ ollama run phi3:mini "Hello"
 uv venv                    # Create virtual environment
 source .venv/bin/activate  # Activate (Linux/macOS)
 .venv\Scripts\activate     # Activate (Windows)
-uv pip sync               # Install dependencies
+uv pip sync requirements.txt  # Install from lock file
+uv pip install -e .        # Install project in editable mode
 
 # Prefect
 prefect server start      # Start server

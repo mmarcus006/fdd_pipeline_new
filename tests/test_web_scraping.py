@@ -345,7 +345,7 @@ class TestBaseScraper:
         mock_http_client.get.return_value = mock_response
         scraper.http_client = mock_http_client
         
-        with pytest.raises(DownloadError, match="not a valid PDF"):
+        with pytest.raises(ScrapingError, match="not a valid PDF"):
             await scraper.download_document("https://example.com/test.pdf")
     
     @pytest.mark.asyncio
