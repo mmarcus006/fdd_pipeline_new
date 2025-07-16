@@ -5,5 +5,9 @@
       "Bash(touch:*)"
     ],
     "deny": []
-  }
+  },
+  "enabledMcpjsonServers": [
+    "github"
+  ],
+  "enableAllProjectMcpServers": true
 }
