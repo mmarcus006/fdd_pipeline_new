@@ -133,34 +133,229 @@ uv pip install -e ".[dev]"
 
 ### 3.3 MinerU Local Setup
 
-1. **Install MinerU**
-   ```bash
-   # Install with GPU support using UV
-   uv pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
-   
-   # Or CPU-only version (slower)
-   uv pip install magic-pdf
-   ```
+#### Prerequisites
+- **GPU Requirements** (Recommended):
+  - NVIDIA GPU with Turing architecture or newer (GTX 1060+ with 6GB+ VRAM)
+  - CUDA 11.8+ installed and configured
+  - NVIDIA drivers version 520+ 
+- **Storage**: 20GB+ free space (15GB for models + 5GB for processing)
+- **RAM**: 16GB minimum, 32GB recommended
 
-2. **Download Models**
-   ```bash
-   # Download all models (~15GB)
-   magic-pdf model-download
-   
-   # Models will be saved to ~/.mineru/models
-   ```
+#### Step 1: Verify GPU Availability (Optional but Recommended)
+```bash
+# Check NVIDIA GPU
+nvidia-smi
 
-3. **Verify Installation**
-   ```bash
-   # Check version
-   magic-pdf --version
-   
-   # Test GPU support
-   python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
-   
-   # Process test PDF
-   magic-pdf pdf-command --pdf sample.pdf --output-dir test_output
-   ```
+# Verify CUDA installation
+nvcc --version
+
+# Test PyTorch CUDA support
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'CUDA device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"No GPU\"}')"
+```
+
+#### Step 2: Install MinerU
+```bash
+# Install with GPU support using UV (recommended)
+uv pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+
+# Or install with pip if UV fails
+pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+
+# For CPU-only version (10-50x slower, use only if no GPU)
+uv pip install magic-pdf
+
+# Optional: Install PaddlePaddle for enhanced OCR (GPU version)
+pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+```
+
+#### Step 3: Download Models
+```bash
+# Download all required models (~15GB, takes 15-30 minutes)
+magic-pdf model-download
+
+# Models will be saved to ~/.mineru/models
+# You should see these directories after download:
+ls ~/.mineru/models/
+# Expected output:
+# Layout/  MFD/  MFR/  OCR/
+
+# Verify model sizes
+du -sh ~/.mineru/models/*
+# Expected sizes:
+# 2.5G    Layout/
+# 3.2G    MFD/
+# 4.8G    MFR/
+# 4.5G    OCR/
+```
+
+#### Step 4: Configure MinerU
+```bash
+# Create configuration file
+cat > ~/magic-pdf.json << 'EOF'
+{
+    "models-dir": "~/.mineru/models",
+    "device-mode": "cuda",
+    "layout-config": {
+        "model": "doclayout_yolo"
+    },
+    "formula-config": {
+        "mfd_model": "yolo_v8_mfd",
+        "mfr_model": "unimernet_small",
+        "enable": true
+    },
+    "table-config": {
+        "model": "rapid_table",
+        "enable": true,
+        "max_time": 400
+    }
+}
+EOF
+
+# For CPU-only mode, change device-mode to "cpu"
+```
+
+#### Step 5: Set Environment Variables
+```bash
+# Add to your .env file
+echo "# MinerU Local Configuration" >> .env
+echo "MINERU_MODEL_PATH=~/.mineru/models" >> .env
+echo "MINERU_DEVICE=cuda  # or 'cpu' if no GPU" >> .env
+echo "MINERU_BATCH_SIZE=2  # Reduce to 1 if GPU memory errors" >> .env
+echo "MINERU_MAX_PAGES=500  # Maximum pages per document" >> .env
+```
+
+#### Step 6: Verify Installation
+```bash
+# Check version
+magic-pdf --version
+# Expected: magic-pdf 1.3.12 or higher
+
+# Test basic functionality
+wget https://arxiv.org/pdf/2308.00352.pdf -O test.pdf
+magic-pdf pdf-command --pdf test.pdf --output-dir test_output/
+
+# Check output
+ls test_output/
+# Should see: images/ layout.json output.md
+
+# Test with Python API
+python << 'EOF'
+from magic_pdf.pipe.UNIPipe import UNIPipe
+from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+import os
+
+# Test configuration
+print("Testing MinerU Python API...")
+
+# Create output directory
+os.makedirs("test_api_output", exist_ok=True)
+image_writer = DiskReaderWriter("test_api_output")
+
+# Read test PDF
+with open("test.pdf", "rb") as f:
+    pdf_bytes = f.read()
+
+# Process
+try:
+    pipe = UNIPipe(pdf_bytes, {"_pdf_type": "", "model_list": []}, image_writer)
+    pipe.pipe_classify()
+    if hasattr(pipe, 'pipe_analyze'):
+        pipe.pipe_analyze()
+    pipe.pipe_parse()
+    
+    print("✓ MinerU Python API working correctly")
+    print(f"✓ Using device: {os.getenv('MINERU_DEVICE', 'cuda')}")
+except Exception as e:
+    print(f"✗ Error: {e}")
+EOF
+```
+
+#### Step 7: Performance Testing
+```bash
+# Create performance test script
+cat > test_mineru_performance.py << 'EOF'
+import time
+import os
+from magic_pdf.pipe.UNIPipe import UNIPipe
+from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+
+def test_performance(pdf_path):
+    print(f"Testing MinerU performance on: {pdf_path}")
+    print(f"Device: {os.getenv('MINERU_DEVICE', 'cuda')}")
+    print(f"Batch size: {os.getenv('MINERU_BATCH_SIZE', '2')}")
+    
+    start = time.time()
+    
+    # Setup
+    image_writer = DiskReaderWriter("perf_test_output")
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+    
+    # Process
+    pipe = UNIPipe(pdf_bytes, {"_pdf_type": "", "model_list": []}, image_writer)
+    pipe.pipe_classify()
+    if hasattr(pipe, 'pipe_analyze'):
+        pipe.pipe_analyze()
+    pipe.pipe_parse()
+    
+    end = time.time()
+    
+    # Report
+    file_size_mb = len(pdf_bytes) / (1024 * 1024)
+    processing_time = end - start
+    
+    print(f"\nResults:")
+    print(f"File size: {file_size_mb:.2f} MB")
+    print(f"Processing time: {processing_time:.2f} seconds")
+    print(f"Speed: {file_size_mb/processing_time:.2f} MB/s")
+
+if __name__ == "__main__":
+    test_performance("test.pdf")
+EOF
+
+python test_mineru_performance.py
+```
+
+#### Troubleshooting Common Installation Issues
+
+**Issue: CUDA/GPU not detected**
+```bash
+# Solution 1: Set CUDA path explicitly
+export CUDA_HOME=/usr/local/cuda
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+# Solution 2: Use CPU mode
+export MINERU_DEVICE=cpu
+```
+
+**Issue: Model download fails**
+```bash
+# Solution: Download models manually
+mkdir -p ~/.mineru/models
+cd ~/.mineru/models
+
+# Download from Hugging Face mirror (if main site is slow)
+git clone https://huggingface.co/opendatalab/mineru-models .
+```
+
+**Issue: Out of GPU memory**
+```bash
+# Solution: Reduce batch size
+export MINERU_BATCH_SIZE=1
+
+# Or use memory fraction setting
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+```
+
+**Issue: Import errors**
+```bash
+# Solution: Reinstall with clean environment
+uv pip uninstall magic-pdf mineru -y
+uv pip cache purge
+uv pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+```
 
 ### 3.4 LLM Providers Setup
 

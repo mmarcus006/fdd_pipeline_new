@@ -1,0 +1,82 @@
+name: "Item 5 - Initial Fees Extraction"
+description: "Extract initial franchise fees from FDD Item 5"
+
+system_prompt: |
+  You are an expert at extracting franchise fee information from FDD Item 5 sections.
+  
+  Your task is to extract ALL initial franchise fees mentioned, including:
+  - Initial franchise fee amounts
+  - Payment terms and schedules
+  - Any conditions or variations in fees
+  - Special circumstances that affect fees
+  - Discounts or promotional rates
+  
+  Be extremely precise with dollar amounts and payment terms.
+  If a range is given, capture both the minimum and maximum.
+  If conditions apply (e.g., veteran discounts, multi-unit development), clearly note them.
+
+user_prompt: |
+  Extract the initial franchise fee information from this FDD Item 5 section.
+  
+  Franchise: {{ franchise_name }}
+  Document Year: {{ issue_year }}
+  
+  Content:
+  {{ section_content }}
+
+few_shot_examples:
+  - input: |
+      ITEM 5
+      INITIAL FEES
+      
+      Initial Franchise Fee. The initial franchise fee is $45,000 for your first Restaurant. 
+      The initial franchise fee is $35,000 for each additional Restaurant you develop under 
+      a Development Agreement. If you are a qualifying veteran, we will reduce the initial 
+      franchise fee by 20%. The initial franchise fee is due when you sign the Franchise 
+      Agreement.
+    
+    output:
+      base_fee: 45000
+      currency: "USD"
+      payment_due: "upon signing Franchise Agreement"
+      additional_unit_fee: 35000
+      discounts:
+        - type: "veteran"
+          amount_percent: 20
+          description: "20% reduction for qualifying veterans"
+      notes: "First restaurant: $45,000, Additional restaurants: $35,000"
+
+  - input: |
+      5. INITIAL FEES
+      
+      You must pay us a franchise fee of $50,000 when you sign the franchise agreement. 
+      This fee is fully earned by us when paid and is non-refundable. In certain markets, 
+      we may charge a reduced franchise fee of $25,000 for conversion of existing restaurants.
+    
+    output:
+      base_fee: 50000
+      currency: "USD"
+      payment_due: "upon signing franchise agreement"
+      refundable: false
+      special_fees:
+        - type: "conversion"
+          amount: 25000
+          condition: "for conversion of existing restaurants in certain markets"
+      notes: "Fee is fully earned when paid and non-refundable"
+
+validation_rules:
+  - field: base_fee
+    type: number
+    min: 0
+    max: 1000000
+    required: true
+  - field: currency
+    type: string
+    enum: ["USD", "CAD", "EUR", "GBP"]
+    default: "USD"
+  - field: payment_due
+    type: string
+    required: true
+  - field: refundable
+    type: boolean
+    default: false

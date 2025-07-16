@@ -23,8 +23,8 @@ graph TB
     end
     
     subgraph "Stage 3: Segmentation"
-        B4 --> C1[MinerU Processing]
-        C1 --> C2[Layout JSON]
+        B4 --> C1[MinerU Local Processing]
+        C1 --> C2[Layout Analysis JSON]
         C2 --> C3[Section Detection]
         C3 --> C4[PDF Splitting]
         C4 --> C5[Section Records]
@@ -173,18 +173,21 @@ def match_franchise(extracted_info: dict) -> Optional[UUID]:
 
 ## Stage 3: Document Segmentation
 
-### 3.1 MinerU Processing Pipeline
+### 3.1 MinerU Processing Pipeline (Local)
 
 ```mermaid
 stateDiagram-v2
     [*] --> DownloadFromDrive
-    DownloadFromDrive --> CallMinerUAPI
-    CallMinerUAPI --> PollStatus
-    PollStatus --> CheckComplete: Status?
-    CheckComplete --> PollStatus: Processing
-    CheckComplete --> DownloadJSON: Complete
-    DownloadJSON --> ParseLayout
-    ParseLayout --> IdentifySections
+    DownloadFromDrive --> CheckGPUAvailable
+    CheckGPUAvailable --> LoadMinerUModels: GPU Found
+    CheckGPUAvailable --> LoadMinerUModelsCPU: No GPU
+    LoadMinerUModels --> ProcessWithUNIPipe
+    LoadMinerUModelsCPU --> ProcessWithUNIPipe
+    ProcessWithUNIPipe --> ClassifyDocument
+    ClassifyDocument --> AnalyzeLayout
+    AnalyzeLayout --> ParseContent
+    ParseContent --> ExtractStructure
+    ExtractStructure --> IdentifySections
     IdentifySections --> ValidateSections
     ValidateSections --> GenerateSplits: Valid
     ValidateSections --> ManualReview: Invalid
@@ -194,11 +197,12 @@ stateDiagram-v2
 ### 3.2 Section Detection Logic
 
 ```python
-def detect_sections(mineru_json: dict) -> List[Section]:
+def detect_sections(mineru_output: dict) -> List[Section]:
+    """Process MinerU local output to identify FDD sections"""
     sections = []
     
-    # Pass 1: High confidence - Title blocks
-    for block in mineru_json["blocks"]:
+    # Pass 1: High confidence - Title blocks from MinerU layout analysis
+    for block in mineru_output["blocks"]:
         if block["type"] == "title":
             match = re.search(r"ITEM\s+(\d+)", block["text"], re.I)
             if match:
@@ -209,9 +213,9 @@ def detect_sections(mineru_json: dict) -> List[Section]:
                     confidence=0.95
                 ))
     
-    # Pass 2: Medium confidence - Text search
+    # Pass 2: Medium confidence - Text search in MinerU extracted content
     if len(sections) < 20:  # Missing sections
-        for block in mineru_json["blocks"]:
+        for block in mineru_output["blocks"]:
             if block["type"] == "text":
                 # Complex regex patterns for each item
                 patterns = get_item_patterns()
@@ -230,7 +234,56 @@ def detect_sections(mineru_json: dict) -> List[Section]:
     return sections
 ```
 
-### 3.3 PDF Splitting Process
+### 3.3 MinerU Local Integration
+
+```python
+async def process_with_mineru_local(fdd_id: UUID, pdf_path: str):
+    """Process PDF using local MinerU installation"""
+    import os
+    from magic_pdf.pipe.UNIPipe import UNIPipe
+    from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+    
+    # Configure based on available hardware
+    device = os.getenv('MINERU_DEVICE', 'cuda')
+    batch_size = int(os.getenv('MINERU_BATCH_SIZE', '2'))
+    
+    # Setup output directory
+    output_dir = f"processed/{fdd_id}"
+    os.makedirs(output_dir, exist_ok=True)
+    image_writer = DiskReaderWriter(f"{output_dir}/images")
+    
+    # Read PDF
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+    
+    # Process with MinerU
+    pipe = UNIPipe(
+        pdf_bytes,
+        {"_pdf_type": "", "model_list": []},
+        image_writer
+    )
+    
+    # Three-stage processing pipeline
+    pipe.pipe_classify()  # Classify document type
+    pipe.pipe_analyze()   # Analyze layout structure
+    pipe.pipe_parse()     # Extract content
+    
+    # Get structured output
+    layout_data = pipe.get_layout_data()
+    markdown = pipe.pipe_mk_markdown("images", drop_mode="none")
+    
+    # Extract sections from layout data
+    sections = detect_sections(layout_data)
+    
+    return {
+        "sections": sections,
+        "markdown": markdown,
+        "layout_data": layout_data,
+        "processing_device": device
+    }
+```
+
+### 3.4 PDF Splitting Process
 
 ```python
 async def split_pdf(fdd_id: UUID, sections: List[Section]):

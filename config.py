@@ -19,18 +19,34 @@ class Settings(BaseSettings):
     gdrive_creds_json: str = Field(..., description="Path to Google service account JSON")
     gdrive_folder_id: str = Field(..., description="Google Drive folder ID for FDD storage")
     
-    # MinerU Local Configuration
+    # MinerU Configuration (API and Local)
+    mineru_mode: str = Field(
+        default="local",
+        description="MinerU processing mode: 'api' or 'local'"
+    )
+    mineru_api_key: Optional[str] = Field(
+        default=None,
+        description="MinerU API key (required for API mode)"
+    )
+    mineru_base_url: str = Field(
+        default="https://api.mineru.com/v1",
+        description="MinerU API base URL"
+    )
     mineru_model_path: str = Field(
         default="~/.mineru/models",
-        description="Path to MinerU model files"
+        description="Path to MinerU model files (local mode)"
     )
     mineru_device: str = Field(
         default="cuda",
-        description="Device for MinerU processing (cuda or cpu)"
+        description="Device for MinerU processing (cuda or cpu, local mode)"
     )
     mineru_batch_size: int = Field(
         default=2,
-        description="Batch size for MinerU processing"
+        description="Batch size for MinerU processing (local mode)"
+    )
+    mineru_rate_limit: int = Field(
+        default=10,
+        description="Maximum concurrent MinerU API requests"
     )
     
     # LLM Provider Configuration
@@ -140,6 +156,15 @@ class Settings(BaseSettings):
             # Clean up any inline comments
             v = v.split('#')[0].strip()
             return int(v)
+        return v
+    
+    @field_validator("mineru_mode")
+    @classmethod
+    def validate_mineru_mode(cls, v: str) -> str:
+        """Validate MinerU processing mode."""
+        v = v.lower().strip()
+        if v not in {"api", "local"}:
+            raise ValueError("mineru_mode must be 'api' or 'local'")
         return v
 
 

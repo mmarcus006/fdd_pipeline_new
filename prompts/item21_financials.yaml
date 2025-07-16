@@ -1,0 +1,187 @@
+name: "Item 21 - Financial Statements Extraction"
+description: "Extract key financial metrics from FDD Item 21 financial statements"
+
+system_prompt: |
+  You are an expert at analyzing financial statements from FDD Item 21.
+  
+  Your task is to extract key financial metrics from the included financial statements:
+  - Balance sheet data (assets, liabilities, equity)
+  - Income statement data (revenue, expenses, net income)
+  - Cash flow information if available
+  - Key financial ratios if calculable
+  
+  Focus on extracting:
+  - Total revenue/sales
+  - Operating expenses
+  - Net income/loss
+  - Total assets
+  - Total liabilities
+  - Shareholders' equity
+  - Working capital
+  - Any franchise-specific metrics
+  
+  Note the type of financial statements:
+  - Audited vs. unaudited
+  - Consolidated vs. standalone
+  - Fiscal year covered
+  - Accounting standards used (GAAP, etc.)
+
+user_prompt: |
+  Extract key financial metrics from this FDD Item 21 financial statements section.
+  
+  Franchise: {{ franchise_name }}
+  Document Year: {{ issue_year }}
+  
+  Content:
+  {{ section_content }}
+
+few_shot_examples:
+  - input: |
+      ITEM 21
+      FINANCIAL STATEMENTS
+      
+      Attached are our audited financial statements for the fiscal years ended 
+      December 31, 2023, 2022, and 2021.
+      
+      CONSOLIDATED BALANCE SHEET
+      As of December 31, 2023 and 2022
+      (In thousands)
+      
+      ASSETS                           2023        2022
+      Current Assets:
+      Cash and equivalents          $12,456     $10,234
+      Accounts receivable            $8,234      $7,123
+      Inventory                      $3,456      $2,987
+      Total Current Assets          $24,146     $20,344
+      
+      Property and Equipment, net   $45,678     $42,123
+      Intangible Assets            $23,456     $24,567
+      Total Assets                 $93,280     $87,034
+      
+      LIABILITIES AND EQUITY
+      Current Liabilities:
+      Accounts payable              $5,678      $4,567
+      Accrued expenses              $3,456      $2,987
+      Current portion of debt       $2,000      $2,000
+      Total Current Liabilities    $11,134      $9,554
+      
+      Long-term Debt               $25,000     $27,000
+      Total Liabilities            $36,134     $36,554
+      
+      Shareholders' Equity         $57,146     $50,480
+      Total Liabilities and Equity $93,280     $87,034
+      
+      CONSOLIDATED INCOME STATEMENT
+      For the Years Ended December 31, 2023 and 2022
+      (In thousands)
+      
+                                      2023        2022
+      Revenue:
+      Franchise fees and royalties  $45,678     $41,234
+      Company restaurant sales      $12,345     $11,234
+      Total Revenue                $58,023     $52,468
+      
+      Operating Expenses:
+      Cost of sales                $15,678     $14,234
+      General and administrative   $25,456     $23,456
+      Marketing                     $5,678      $4,987
+      Total Operating Expenses     $46,812     $42,677
+      
+      Operating Income             $11,211      $9,791
+      Interest Expense              $1,234      $1,456
+      Income Before Taxes           $9,977      $8,335
+      Income Tax Expense            $3,311      $2,751
+      Net Income                    $6,666      $5,584
+    
+    output:
+      financial_statement_type: "audited"
+      reporting_standard: "GAAP"
+      fiscal_years: [2023, 2022, 2021]
+      currency: "USD"
+      unit_of_measure: "thousands"
+      
+      balance_sheet:
+        - fiscal_year: 2023
+          assets:
+            current_assets:
+              cash_and_equivalents: 12456000
+              accounts_receivable: 8234000
+              inventory: 3456000
+              total_current_assets: 24146000
+            property_equipment_net: 45678000
+            intangible_assets: 23456000
+            total_assets: 93280000
+          
+          liabilities:
+            current_liabilities:
+              accounts_payable: 5678000
+              accrued_expenses: 3456000
+              current_debt: 2000000
+              total_current_liabilities: 11134000
+            long_term_debt: 25000000
+            total_liabilities: 36134000
+          
+          equity:
+            shareholders_equity: 57146000
+          
+          working_capital: 13012000  # current assets - current liabilities
+        
+        - fiscal_year: 2022
+          assets:
+            total_assets: 87034000
+          liabilities:
+            total_liabilities: 36554000
+          equity:
+            shareholders_equity: 50480000
+      
+      income_statement:
+        - fiscal_year: 2023
+          revenue:
+            franchise_fees_royalties: 45678000
+            restaurant_sales: 12345000
+            total_revenue: 58023000
+          
+          expenses:
+            cost_of_sales: 15678000
+            general_administrative: 25456000
+            marketing: 5678000
+            total_operating_expenses: 46812000
+            interest_expense: 1234000
+          
+          profitability:
+            operating_income: 11211000
+            income_before_taxes: 9977000
+            income_tax_expense: 3311000
+            net_income: 6666000
+            net_margin_percent: 11.49  # (net income / total revenue) * 100
+        
+        - fiscal_year: 2022
+          revenue:
+            total_revenue: 52468000
+          profitability:
+            net_income: 5584000
+            net_margin_percent: 10.64
+      
+      key_ratios:
+        - fiscal_year: 2023
+          current_ratio: 2.17  # current assets / current liabilities
+          debt_to_equity: 0.48  # total debt / shareholders equity
+          return_on_assets: 7.15  # (net income / total assets) * 100
+          return_on_equity: 11.66  # (net income / shareholders equity) * 100
+
+validation_rules:
+  - field: financial_statement_type
+    type: string
+    enum: ["audited", "unaudited", "reviewed", "compiled"]
+    required: true
+  - field: fiscal_years
+    type: array
+    min_items: 1
+    max_items: 5
+  - field: balance_sheet
+    type: array
+    item_properties:
+      - field: total_assets
+        equals: "sum of all asset components"
+      - field: total_liabilities_and_equity
+        equals: "total_assets"

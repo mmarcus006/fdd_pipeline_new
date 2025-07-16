@@ -55,7 +55,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write integration tests with mock portal responses
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-  - [-] 3.3 Implement Wisconsin portal scraper
+  - [x] 3.3 Implement Wisconsin portal scraper
     - Create `WisconsinScraper` with multi-step form navigation
     - Implement active filings table parsing and franchise name extraction
     - Add detail page navigation and enhanced metadata extraction
@@ -77,7 +77,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests with mocked Google Drive API
     - _Requirements: 1.5, 6.7, 2.4_
 
-  - [ ] 4.2 Create database operations layer
+  - [x] 4.2 Create database operations layer
     - Implement `DatabaseManager` with SQLAlchemy and connection pooling
     - Create CRUD operations for all entity types
     - Add batch insert functionality for performance optimization
@@ -89,7 +89,7 @@ This implementation plan converts the comprehensive system design into actionabl
 
 - [ ] 5. Document Processing Pipeline
 
-  - [ ] 5.1 Implement MinerU integration
+  - [-] 5.1 Implement MinerU integration
 
     - Create `MinerUClient` with API authentication and rate limiting
     - Implement document upload and processing status polling

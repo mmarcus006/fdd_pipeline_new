@@ -1,0 +1,168 @@
+name: "Item 7 - Initial Investment Extraction"
+description: "Extract initial investment table from FDD Item 7"
+
+system_prompt: |
+  You are an expert at extracting initial investment information from FDD Item 7 tables.
+  
+  Your task is to extract the COMPLETE initial investment table, capturing:
+  - Every expense category listed
+  - Low and high range for each expense
+  - Method of payment
+  - When payment is due
+  - To whom payment is made
+  
+  Common expense categories include:
+  - Initial franchise fee
+  - Real estate/lease
+  - Leasehold improvements
+  - Equipment and fixtures
+  - Signage
+  - Initial inventory
+  - Training expenses
+  - Grand opening advertising
+  - Insurance
+  - Permits and licenses
+  - Professional fees
+  - Additional funds (working capital)
+  
+  Preserve ALL numerical values exactly as stated in the document.
+  Include any footnotes or explanatory notes.
+
+user_prompt: |
+  Extract the complete initial investment table from this FDD Item 7 section.
+  
+  Franchise: {{ franchise_name }}
+  Document Year: {{ issue_year }}
+  
+  Content:
+  {{ section_content }}
+
+few_shot_examples:
+  - input: |
+      ITEM 7
+      ESTIMATED INITIAL INVESTMENT
+      
+      YOUR ESTIMATED INITIAL INVESTMENT
+      
+      Type of Expenditure | Low | High | Method of Payment | When Due | To Whom Payment Is Made
+      Initial Franchise Fee | $45,000 | $45,000 | Lump Sum | On signing FA | Us
+      Real Property Lease | $3,000 | $8,000 | As incurred | Monthly | Landlord
+      Leasehold Improvements | $75,000 | $150,000 | As incurred | Before opening | Contractors
+      Furniture, Fixtures & Equipment | $80,000 | $120,000 | Lump sum | Before opening | Suppliers
+      Signage | $15,000 | $25,000 | As incurred | Before opening | Suppliers
+      Opening Inventory | $20,000 | $30,000 | As incurred | Before opening | Us/Suppliers
+      Training Expenses | $3,000 | $5,000 | As incurred | During training | Airlines, Hotels
+      Grand Opening | $10,000 | $15,000 | As incurred | First 3 months | Suppliers
+      Insurance | $5,000 | $8,000 | As incurred | Before opening | Insurance companies
+      Permits and Licenses | $2,000 | $5,000 | As incurred | Before opening | Government agencies
+      Professional Fees | $5,000 | $10,000 | As incurred | As incurred | Attorneys, Accountants
+      Additional Funds - 3 months | $40,000 | $60,000 | As incurred | As incurred | Employees, Suppliers
+      TOTAL | $303,000 | $481,000 | | |
+    
+    output:
+      investment_items:
+        - category: "Initial Franchise Fee"
+          low_amount: 45000
+          high_amount: 45000
+          payment_method: "Lump Sum"
+          when_due: "On signing FA"
+          paid_to: "Us"
+        - category: "Real Property Lease"
+          low_amount: 3000
+          high_amount: 8000
+          payment_method: "As incurred"
+          when_due: "Monthly"
+          paid_to: "Landlord"
+        - category: "Leasehold Improvements"
+          low_amount: 75000
+          high_amount: 150000
+          payment_method: "As incurred"
+          when_due: "Before opening"
+          paid_to: "Contractors"
+        - category: "Furniture, Fixtures & Equipment"
+          low_amount: 80000
+          high_amount: 120000
+          payment_method: "Lump sum"
+          when_due: "Before opening"
+          paid_to: "Suppliers"
+        - category: "Signage"
+          low_amount: 15000
+          high_amount: 25000
+          payment_method: "As incurred"
+          when_due: "Before opening"
+          paid_to: "Suppliers"
+        - category: "Opening Inventory"
+          low_amount: 20000
+          high_amount: 30000
+          payment_method: "As incurred"
+          when_due: "Before opening"
+          paid_to: "Us/Suppliers"
+        - category: "Training Expenses"
+          low_amount: 3000
+          high_amount: 5000
+          payment_method: "As incurred"
+          when_due: "During training"
+          paid_to: "Airlines, Hotels"
+        - category: "Grand Opening"
+          low_amount: 10000
+          high_amount: 15000
+          payment_method: "As incurred"
+          when_due: "First 3 months"
+          paid_to: "Suppliers"
+        - category: "Insurance"
+          low_amount: 5000
+          high_amount: 8000
+          payment_method: "As incurred"
+          when_due: "Before opening"
+          paid_to: "Insurance companies"
+        - category: "Permits and Licenses"
+          low_amount: 2000
+          high_amount: 5000
+          payment_method: "As incurred"
+          when_due: "Before opening"
+          paid_to: "Government agencies"
+        - category: "Professional Fees"
+          low_amount: 5000
+          high_amount: 10000
+          payment_method: "As incurred"
+          when_due: "As incurred"
+          paid_to: "Attorneys, Accountants"
+        - category: "Additional Funds - 3 months"
+          low_amount: 40000
+          high_amount: 60000
+          payment_method: "As incurred"
+          when_due: "As incurred"
+          paid_to: "Employees, Suppliers"
+      
+      total_investment:
+        low_amount: 303000
+        high_amount: 481000
+      
+      currency: "USD"
+      notes: "Additional funds cover 3 months of working capital"
+
+validation_rules:
+  - field: investment_items
+    type: array
+    min_items: 5
+    item_properties:
+      - field: category
+        type: string
+        required: true
+      - field: low_amount
+        type: number
+        min: 0
+        required: true
+      - field: high_amount
+        type: number
+        min: 0
+        required: true
+  - field: total_investment
+    required: true
+    properties:
+      - field: low_amount
+        type: number
+        min: 0
+      - field: high_amount
+        type: number
+        min: 0

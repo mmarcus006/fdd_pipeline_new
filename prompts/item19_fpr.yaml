@@ -1,0 +1,142 @@
+name: "Item 19 - Financial Performance Representations Extraction"
+description: "Extract financial performance data from FDD Item 19"
+
+system_prompt: |
+  You are an expert at extracting financial performance representations from FDD Item 19.
+  
+  Your task is to extract ALL financial performance information, including:
+  - Revenue/sales data (averages, medians, ranges)
+  - Profit margins and net income data
+  - Number of units/outlets included in the data
+  - Time period covered
+  - Geographic scope
+  - Methodology used
+  - Any exclusions or special circumstances
+  - Disclaimers and limitations
+  
+  This is often the most complex section with varied formats:
+  - Some franchisors provide detailed tables
+  - Others provide narrative descriptions
+  - Some provide no financial performance representations
+  
+  Be extremely precise with:
+  - All numerical data
+  - Time periods (fiscal years, months)
+  - What the numbers represent (gross sales, net revenue, EBITDA, etc.)
+  - Any conditions or qualifications
+
+user_prompt: |
+  Extract financial performance representation data from this FDD Item 19 section.
+  
+  Franchise: {{ franchise_name }}
+  Document Year: {{ issue_year }}
+  
+  Content:
+  {{ section_content }}
+
+few_shot_examples:
+  - input: |
+      ITEM 19
+      FINANCIAL PERFORMANCE REPRESENTATIONS
+      
+      The FTC's Franchise Rule permits a franchisor to provide information about the actual 
+      or potential financial performance of its franchised and/or company-owned outlets if 
+      there is a reasonable basis for the information and the information is included in 
+      the disclosure document.
+      
+      We do not make any financial performance representations about a franchisee's future 
+      financial performance or the past financial performance of company-owned or franchised 
+      outlets. We also do not authorize our employees or representatives to make any such 
+      representations either orally or in writing.
+    
+    output:
+      has_fpr: false
+      fpr_type: "none"
+      statement: "We do not make any financial performance representations"
+      disclaimers:
+        - "No representations about future financial performance"
+        - "No representations about past performance"
+        - "Employees not authorized to make representations"
+
+  - input: |
+      ITEM 19
+      FINANCIAL PERFORMANCE REPRESENTATIONS
+      
+      Historical Financial Information for Franchised Restaurants
+      
+      The following table presents the average annual Gross Sales for franchised Restaurants 
+      that were open and operating for the entire 12-month period ending December 31, 2023:
+      
+      Number of Restaurants: 156
+      Average Gross Sales: $1,245,678
+      Median Gross Sales: $1,123,456
+      Highest Gross Sales: $2,567,890
+      Lowest Gross Sales: $567,890
+      
+      43% of Restaurants exceeded the average.
+      
+      Notes:
+      - Excludes 12 restaurants that were not open for the full year
+      - Gross Sales means all revenue before any deductions
+      - Results will vary by location
+    
+    output:
+      has_fpr: true
+      fpr_type: "historical_sales"
+      reporting_period:
+        start_date: "2023-01-01"
+        end_date: "2023-12-31"
+        duration_months: 12
+      
+      metrics:
+        - metric_name: "Average Gross Sales"
+          value: 1245678
+          unit: "USD"
+          period: "annual"
+        - metric_name: "Median Gross Sales"
+          value: 1123456
+          unit: "USD"
+          period: "annual"
+        - metric_name: "Highest Gross Sales"
+          value: 2567890
+          unit: "USD"
+          period: "annual"
+        - metric_name: "Lowest Gross Sales"
+          value: 567890
+          unit: "USD"
+          period: "annual"
+      
+      sample_size:
+        included_units: 156
+        excluded_units: 12
+        exclusion_reason: "not open for full year"
+      
+      performance_distribution:
+        above_average_percentage: 43
+        above_average_count: 67
+      
+      definitions:
+        - term: "Gross Sales"
+          definition: "all revenue before any deductions"
+      
+      disclaimers:
+        - "Results will vary by location"
+        - "Excludes restaurants not open for full year"
+
+validation_rules:
+  - field: has_fpr
+    type: boolean
+    required: true
+  - field: fpr_type
+    type: string
+    enum: ["none", "historical_sales", "projected_sales", "profit_loss", "mixed"]
+  - field: metrics
+    type: array
+    conditional: "when has_fpr is true"
+    item_properties:
+      - field: metric_name
+        type: string
+        required: true
+      - field: value
+        type: number
+        required: true

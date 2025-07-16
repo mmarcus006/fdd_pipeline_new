@@ -795,6 +795,217 @@ class DatabaseManager:
                                error=str(e))
         
         raise last_exception
+    
+    # Advanced query patterns for common use cases
+    def get_records_paginated(self, table_name: str, page: int = 1, page_size: int = 50,
+                             filters: Optional[Dict] = None, 
+                             order_by: Optional[str] = None) -> Dict[str, Any]:
+        """Get paginated records with metadata."""
+        try:
+            offset = (page - 1) * page_size
+            
+            # Get total count
+            total_count = self.count_records(table_name, filters)
+            
+            # Get records for current page
+            client = self.get_supabase_client()
+            query = client.table(table_name).select('*')
+            
+            # Apply filters
+            if filters:
+                for column, value in filters.items():
+                    if isinstance(value, list):
+                        query = query.in_(column, value)
+                    else:
+                        query = query.eq(column, value)
+            
+            # Apply ordering
+            if order_by:
+                query = query.order(order_by)
+            
+            # Apply pagination
+            query = query.range(offset, offset + page_size - 1)
+            
+            response = query.execute()
+            records = response.data or []
+            
+            # Calculate pagination metadata
+            total_pages = (total_count + page_size - 1) // page_size
+            has_next = page < total_pages
+            has_prev = page > 1
+            
+            return {
+                'records': records,
+                'pagination': {
+                    'page': page,
+                    'page_size': page_size,
+                    'total_count': total_count,
+                    'total_pages': total_pages,
+                    'has_next': has_next,
+                    'has_prev': has_prev
+                }
+            }
+            
+        except Exception as e:
+            logger.error("Failed to get paginated records", 
+                        table=table_name,
+                        page=page,
+                        error=str(e))
+            raise
+    
+    def bulk_update_by_condition(self, table_name: str, updates: Dict[str, Any], 
+                                condition: Dict[str, Any]) -> int:
+        """Update multiple records matching a condition."""
+        try:
+            with self.get_session() as session:
+                # Build update query
+                set_clauses = []
+                params = {}
+                
+                # Add update values
+                for i, (column, value) in enumerate(updates.items()):
+                    param_key = f"update_value_{i}"
+                    set_clauses.append(f"{column} = :{param_key}")
+                    params[param_key] = value
+                
+                # Add condition values
+                where_clauses = []
+                for i, (column, value) in enumerate(condition.items()):
+                    param_key = f"condition_value_{i}"
+                    where_clauses.append(f"{column} = :{param_key}")
+                    params[param_key] = value
+                
+                sql = f"""
+                UPDATE {table_name} 
+                SET {', '.join(set_clauses)}
+                WHERE {' AND '.join(where_clauses)}
+                """
+                
+                result = session.execute(text(sql), params)
+                updated_count = result.rowcount
+                
+                logger.info("Bulk update completed", 
+                           table=table_name,
+                           updated_count=updated_count,
+                           condition=condition)
+                
+                return updated_count
+                
+        except Exception as e:
+            logger.error("Bulk update failed", 
+                        table=table_name,
+                        condition=condition,
+                        error=str(e))
+            raise
+    
+    def execute_stored_procedure(self, procedure_name: str, 
+                               params: Optional[Dict] = None) -> List[Dict]:
+        """Execute a stored procedure."""
+        try:
+            with self.get_session() as session:
+                # Build procedure call
+                if params:
+                    param_placeholders = ', '.join([f":{key}" for key in params.keys()])
+                    sql = f"SELECT * FROM {procedure_name}({param_placeholders})"
+                else:
+                    sql = f"SELECT * FROM {procedure_name}()"
+                
+                result = session.execute(text(sql), params or {})
+                
+                if result.returns_rows:
+                    columns = result.keys()
+                    return [dict(zip(columns, row)) for row in result.fetchall()]
+                return []
+                
+        except Exception as e:
+            logger.error("Stored procedure execution failed", 
+                        procedure=procedure_name,
+                        error=str(e))
+            raise
+    
+    def get_table_statistics(self, table_name: str) -> Dict[str, Any]:
+        """Get comprehensive table statistics."""
+        try:
+            with self.get_session() as session:
+                # Get basic table info
+                table_info_sql = f"""
+                SELECT 
+                    schemaname,
+                    tablename,
+                    tableowner,
+                    hasindexes,
+                    hasrules,
+                    hastriggers
+                FROM pg_tables 
+                WHERE tablename = :table_name
+                """
+                
+                table_info = session.execute(
+                    text(table_info_sql), 
+                    {'table_name': table_name}
+                ).fetchone()
+                
+                if not table_info:
+                    raise ValueError(f"Table {table_name} not found")
+                
+                # Get row count
+                count_sql = f"SELECT COUNT(*) as row_count FROM {table_name}"
+                row_count = session.execute(text(count_sql)).scalar()
+                
+                # Get table size
+                size_sql = f"""
+                SELECT 
+                    pg_size_pretty(pg_total_relation_size('{table_name}')) as total_size,
+                    pg_size_pretty(pg_relation_size('{table_name}')) as table_size,
+                    pg_size_pretty(pg_total_relation_size('{table_name}') - pg_relation_size('{table_name}')) as index_size
+                """
+                
+                size_info = session.execute(text(size_sql)).fetchone()
+                
+                # Get column information
+                columns_sql = f"""
+                SELECT 
+                    column_name,
+                    data_type,
+                    is_nullable,
+                    column_default
+                FROM information_schema.columns 
+                WHERE table_name = :table_name
+                ORDER BY ordinal_position
+                """
+                
+                columns = session.execute(
+                    text(columns_sql), 
+                    {'table_name': table_name}
+                ).fetchall()
+                
+                return {
+                    'table_name': table_name,
+                    'schema': table_info.schemaname,
+                    'owner': table_info.tableowner,
+                    'row_count': row_count,
+                    'total_size': size_info.total_size,
+                    'table_size': size_info.table_size,
+                    'index_size': size_info.index_size,
+                    'has_indexes': table_info.hasindexes,
+                    'has_rules': table_info.hasrules,
+                    'has_triggers': table_info.hastriggers,
+                    'columns': [
+                        {
+                            'name': col.column_name,
+                            'type': col.data_type,
+                            'nullable': col.is_nullable == 'YES',
+                            'default': col.column_default
+                        }
+                        for col in columns
+                    ]
+                }
+                
+        except Exception as e:
+            logger.error("Failed to get table statistics", 
+                        table=table_name,
+                        error=str(e))
+            raise
 
 
 class CRUDOperations(Generic[T]):

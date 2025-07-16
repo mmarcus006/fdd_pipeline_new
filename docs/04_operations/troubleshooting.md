@@ -471,6 +471,242 @@ python scripts/analyze_profile.py profile.stats
                f.write(f"{datetime.now()}: {subject}\n{body}\n\n")
    ```
 
+### 7. MinerU Processing Issues
+
+#### Issue: GPU not detected by MinerU
+**Symptoms:**
+- MinerU defaults to CPU mode despite GPU presence
+- "CUDA device not found" errors
+- Processing extremely slow (10-50x slower than expected)
+
+**Diagnosis:**
+```bash
+# Check CUDA availability in Python
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
+
+# Check MinerU configuration
+cat ~/magic-pdf.json | grep device-mode
+
+# Verify environment variable
+echo $MINERU_DEVICE
+```
+
+**Solutions:**
+1. **Set CUDA paths explicitly:**
+   ```bash
+   export CUDA_HOME=/usr/local/cuda
+   export PATH=$CUDA_HOME/bin:$PATH
+   export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+   
+   # Add to .bashrc or .env
+   echo 'export CUDA_HOME=/usr/local/cuda' >> ~/.bashrc
+   ```
+
+2. **Verify CUDA/PyTorch compatibility:**
+   ```bash
+   # Check versions
+   nvcc --version  # CUDA version
+   python -c "import torch; print(torch.__version__)"  # PyTorch version
+   
+   # Reinstall PyTorch if needed
+   uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+   ```
+
+3. **Fallback to CPU mode:**
+   ```bash
+   # Set environment variable
+   export MINERU_DEVICE=cpu
+   
+   # Or update config file
+   sed -i 's/"device-mode": "cuda"/"device-mode": "cpu"/' ~/magic-pdf.json
+   ```
+
+#### Issue: Out of GPU memory during processing
+**Symptoms:**
+- "CUDA out of memory" errors
+- Process killed during large PDF processing
+- GPU memory at 100% in nvidia-smi
+
+**Diagnosis:**
+```bash
+# Monitor GPU memory usage
+watch -n 1 nvidia-smi
+
+# Check current batch size
+echo $MINERU_BATCH_SIZE
+
+# Test with smaller batch
+MINERU_BATCH_SIZE=1 python test_mineru.py
+```
+
+**Solutions:**
+1. **Reduce batch size:**
+   ```bash
+   # Set to 1 for minimum memory usage
+   export MINERU_BATCH_SIZE=1
+   
+   # Add to .env
+   echo "MINERU_BATCH_SIZE=1" >> .env
+   ```
+
+2. **Clear GPU memory:**
+   ```python
+   import torch
+   import gc
+   
+   # Clear cache
+   torch.cuda.empty_cache()
+   gc.collect()
+   
+   # Kill processes using GPU
+   # nvidia-smi | grep python | awk '{print $5}' | xargs kill -9
+   ```
+
+3. **Process in chunks:**
+   ```python
+   # Split large PDFs
+   def process_pdf_in_chunks(pdf_path, chunk_size=50):
+       # Extract total pages
+       total_pages = get_pdf_page_count(pdf_path)
+       
+       for start in range(0, total_pages, chunk_size):
+           end = min(start + chunk_size, total_pages)
+           chunk_pdf = extract_pages(pdf_path, start, end)
+           process_with_mineru(chunk_pdf)
+           
+           # Clear memory between chunks
+           torch.cuda.empty_cache()
+   ```
+
+#### Issue: MinerU models not loading
+**Symptoms:**
+- "Model file not found" errors
+- "Failed to load layout model" messages
+- Processing fails at initialization
+
+**Diagnosis:**
+```bash
+# Check model directory
+ls -la ~/.mineru/models/
+
+# Verify all models present
+du -sh ~/.mineru/models/*
+
+# Check permissions
+ls -la ~/.mineru/models/Layout/
+
+# Test model loading
+python -c "from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton; ModelSingleton().get_model('layout')"
+```
+
+**Solutions:**
+1. **Re-download models:**
+   ```bash
+   # Remove corrupted models
+   rm -rf ~/.mineru/models
+   
+   # Re-download
+   magic-pdf model-download
+   
+   # Verify download
+   find ~/.mineru/models -name "*.pth" -o -name "*.onnx" | wc -l
+   # Should show 10+ model files
+   ```
+
+2. **Download from mirror:**
+   ```bash
+   # Use Hugging Face mirror
+   mkdir -p ~/.mineru/models
+   cd ~/.mineru/models
+   
+   # Clone model repository
+   git lfs install
+   git clone https://huggingface.co/opendatalab/mineru-models .
+   ```
+
+3. **Set custom model path:**
+   ```bash
+   # Use different directory
+   export MINERU_MODEL_PATH=/data/mineru_models
+   
+   # Update config
+   sed -i 's|"models-dir": ".*"|"models-dir": "/data/mineru_models"|' ~/magic-pdf.json
+   ```
+
+#### Issue: Poor extraction quality
+**Symptoms:**
+- Missing tables or sections
+- Garbled text output
+- Incorrect layout detection
+
+**Solutions:**
+1. **Enable all processing modules:**
+   ```json
+   // Update ~/magic-pdf.json
+   {
+       "formula-config": {
+           "enable": true
+       },
+       "table-config": {
+           "enable": true,
+           "model": "rapid_table"
+       }
+   }
+   ```
+
+2. **Preprocess PDFs:**
+   ```bash
+   # Optimize PDF before processing
+   gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/prepress \
+      -dNOPAUSE -dQUIET -dBATCH -sOutputFile=optimized.pdf input.pdf
+   ```
+
+3. **Use OCR for scanned documents:**
+   ```bash
+   # Install PaddleOCR
+   pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+   
+   # Enable in processing
+   export MINERU_ENABLE_OCR=true
+   ```
+
+#### Issue: MinerU package conflicts
+**Symptoms:**
+- Import errors after installation
+- "No module named 'magic_pdf'" despite installation
+- Version conflicts with other packages
+
+**Solutions:**
+1. **Clean reinstall:**
+   ```bash
+   # Remove all versions
+   uv pip uninstall magic-pdf mineru -y
+   
+   # Clear pip cache
+   uv pip cache purge
+   
+   # Fresh install
+   uv pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+   ```
+
+2. **Create isolated environment:**
+   ```bash
+   # New environment just for MinerU
+   python -m venv mineru_env
+   source mineru_env/bin/activate
+   pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+   ```
+
+3. **Check for conflicts:**
+   ```bash
+   # List all packages
+   uv pip list | grep -E "(torch|pdf|magic|mineru)"
+   
+   # Check for duplicates
+   pip show magic-pdf
+   ```
+
 ## Advanced Troubleshooting
 
 ### Memory Leaks

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(touch:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(python -m pytest tests/test_wisconsin_flow.py::TestWisconsinFlow::test_scrape_wisconsin_portal_task -xvs)",
+      "Bash(python:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   },

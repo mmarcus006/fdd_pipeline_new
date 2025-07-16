@@ -1,0 +1,149 @@
+name: "Item 20 - Outlets and Information Extraction"
+description: "Extract outlet/unit statistics from FDD Item 20 tables"
+
+system_prompt: |
+  You are an expert at extracting franchise outlet information from FDD Item 20 tables.
+  
+  Your task is to extract ALL outlet statistics tables, typically including:
+  - Table 1: Systemwide Outlet Summary (last 3 fiscal years)
+  - Table 2: Transfers of Outlets
+  - Table 3: Status of Franchised Outlets
+  - Table 4: Status of Company-Owned Outlets
+  - Table 5: Projected Openings
+  
+  For each table, capture:
+  - Fiscal year periods
+  - Outlet counts by type (franchised, company-owned)
+  - Changes (openings, closings, transfers)
+  - State-by-state breakdowns if provided
+  
+  Preserve the complete table structure and all numerical data exactly as presented.
+  Tables often show 3-year historical data plus projections.
+
+user_prompt: |
+  Extract all outlet information tables from this FDD Item 20 section.
+  
+  Franchise: {{ franchise_name }}
+  Document Year: {{ issue_year }}
+  
+  Content:
+  {{ section_content }}
+
+few_shot_examples:
+  - input: |
+      ITEM 20
+      OUTLETS AND FRANCHISE INFORMATION
+      
+      Table No. 1
+      Systemwide Outlet Summary
+      For Years 2021 to 2023
+      
+      Outlet Type | Year | Outlets at Start of Year | Outlets Opened | Terminations | Non-Renewals | Reacquired by Franchisor | Ceased Operations-Other | Outlets at End of Year
+      Franchised | 2021 | 245 | 32 | 5 | 2 | 3 | 4 | 263
+      Franchised | 2022 | 263 | 41 | 3 | 1 | 2 | 5 | 293
+      Franchised | 2023 | 293 | 38 | 4 | 2 | 1 | 6 | 318
+      Company-Owned | 2021 | 15 | 3 | 0 | 0 | 0 | 1 | 17
+      Company-Owned | 2022 | 17 | 2 | 0 | 0 | 0 | 0 | 19
+      Company-Owned | 2023 | 19 | 4 | 0 | 0 | 0 | 2 | 21
+      Total Outlets | 2021 | 260 | 35 | 5 | 2 | 3 | 5 | 280
+      Total Outlets | 2022 | 280 | 43 | 3 | 1 | 2 | 5 | 312
+      Total Outlets | 2023 | 312 | 42 | 4 | 2 | 1 | 8 | 339
+    
+    output:
+      tables:
+        - table_number: 1
+          table_name: "Systemwide Outlet Summary"
+          period_covered: "2021 to 2023"
+          
+          outlet_summary:
+            - fiscal_year: 2021
+              outlet_type: "Franchised"
+              count_start: 245
+              opened: 32
+              terminations: 5
+              non_renewals: 2
+              reacquired: 3
+              ceased_other: 4
+              count_end: 263
+            
+            - fiscal_year: 2022
+              outlet_type: "Franchised"
+              count_start: 263
+              opened: 41
+              terminations: 3
+              non_renewals: 1
+              reacquired: 2
+              ceased_other: 5
+              count_end: 293
+            
+            - fiscal_year: 2023
+              outlet_type: "Franchised"
+              count_start: 293
+              opened: 38
+              terminations: 4
+              non_renewals: 2
+              reacquired: 1
+              ceased_other: 6
+              count_end: 318
+            
+            - fiscal_year: 2021
+              outlet_type: "Company-Owned"
+              count_start: 15
+              opened: 3
+              terminations: 0
+              non_renewals: 0
+              reacquired: 0
+              ceased_other: 1
+              count_end: 17
+            
+            - fiscal_year: 2022
+              outlet_type: "Company-Owned"
+              count_start: 17
+              opened: 2
+              terminations: 0
+              non_renewals: 0
+              reacquired: 0
+              ceased_other: 0
+              count_end: 19
+            
+            - fiscal_year: 2023
+              outlet_type: "Company-Owned"
+              count_start: 19
+              opened: 4
+              terminations: 0
+              non_renewals: 0
+              reacquired: 0
+              ceased_other: 2
+              count_end: 21
+          
+          totals:
+            - fiscal_year: 2021
+              total_outlets_start: 260
+              total_outlets_end: 280
+            - fiscal_year: 2022
+              total_outlets_start: 280
+              total_outlets_end: 312
+            - fiscal_year: 2023
+              total_outlets_start: 312
+              total_outlets_end: 339
+
+validation_rules:
+  - field: tables
+    type: array
+    min_items: 1
+    item_properties:
+      - field: table_number
+        type: number
+        required: true
+      - field: table_name
+        type: string
+        required: true
+      - field: outlet_summary
+        type: array
+        conditional: "when table is systemwide summary"
+  - field: fiscal_year
+    type: number
+    min: 2000
+    max: 2030
+  - field: count_validation
+    custom: "count_end should equal count_start + opened - (terminations + non_renewals + reacquired + ceased_other)"

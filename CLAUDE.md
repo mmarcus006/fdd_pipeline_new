@@ -1,37 +1,51 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in 
-this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 **MILLERS CUSTOM RULES**
-
 
 ## Project Overview
 
 This is the FDD (Franchise Disclosure Document) Pipeline - a Python-based document processing system for acquiring, processing, validating, and storing franchise disclosure documents from state registries. The system uses Prefect for orchestration, multiple LLMs for extraction, and hybrid cloud storage.
 
-## Key Responsibilities When Working on This Code
+## Key Commands
 
-1. **Maintain idempotency** - All operations should be safely retryable
-2. **Preserve observability** - Use structured logging and Prefect task decorators
-3. **Handle failures gracefully** - Implement exponential backoff and circuit breakers
-4. **Validate all data** - Use Pydantic models for type safety
-5. **Test thoroughly** - Unit tests for logic, integration tests for external services
+```bash
+# Environment setup (UV package manager - NOT pip)
+uv venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+uv pip install -e ".[dev]"
 
-## Technology Stack
+# Install Playwright browsers
+playwright install chromium
 
-- **Python 3.11+** with UV package manager
-- **Prefect** - Workflow orchestration
-- **Playwright** - Web scraping automation
-- **MinerU** - Local PDF parsing and extraction (GPU-accelerated)
-- **Instructor** - Structured LLM outputs
-- **LLMs**: Gemini Pro (primary), Ollama (local), OpenAI (fallback)
-- **Supabase** - PostgreSQL database
-- **Google Drive API** - Document storage
-- **Pydantic** - Data validation
-- **Loguru** - Structured logging
+# Install MinerU locally (GPU-accelerated PDF processing)
+pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+magic-pdf model-download  # One-time setup, ~15GB
 
-## High-Level Architecture
+# Testing
+pytest                          # Run all tests
+pytest tests/unit/ -v --cov=src # Unit tests with coverage
+pytest -m "not slow"            # Skip slow tests
+make test                       # Via Makefile
+
+# Code quality
+black .                         # Format code
+flake8                         # Lint
+mypy .                         # Type checking
+make check                     # All quality checks
+
+# Prefect workflow
+prefect server start           # Start server (terminal 1)
+make prefect-deploy           # Deploy flows
+prefect agent start -q default # Start agent (terminal 2)
+
+# Database
+make db-migrate               # Run migrations
+make db-reset                # Reset database
+```
+
+## Architecture
 
 The pipeline follows a distributed, event-driven architecture:
 
@@ -43,91 +57,68 @@ State Portals → Scrapers → Queue → Processing → Validation → Storage
 
 ### Core Components
 
-1. **Acquisition Layer** (`scrapers/`)
-   - State-specific web scrapers using Playwright
-   - Handles authentication, navigation, and download
-   - Implements retry logic and rate limiting
+1. **Scrapers** (`franchise_web_scraper/`, `tasks/*_scraper.py`)
+   - State-specific implementations (WI_scraper.py, minnesota_scraper.py)
+   - Use Playwright for browser automation
+   - Implement retry logic and rate limiting
 
-2. **Processing Layer** (`processors/`)
-   - PDF parsing with MinerU (local GPU-accelerated installation)
-   - LLM extraction using Instructor
-   - Multi-model fallback strategy
+2. **Processing** (`tasks/`, `models/`)
+   - PDF parsing with MinerU (local GPU installation)
+   - LLM extraction using Instructor library
+   - Multi-model fallback: Gemini Pro → Ollama → OpenAI
 
-3. **Validation Layer** (`validators/`)
-   - Schema validation with Pydantic
-   - Business rule validation
-   - Cross-reference checks
-
-4. **Storage Layer** (`storage/`)
+3. **Storage** (`utils/database.py`, `tasks/drive_operations.py`)
    - Metadata in Supabase (PostgreSQL)
    - Documents in Google Drive
-   - Hybrid indexing for fast retrieval
+   - Entity operations for deduplication
 
-## Development Commands
+4. **Orchestration** (`flows/`)
+   - Prefect flows for state-specific pipelines
+   - Task decorators for retries and monitoring
 
-```bash
-# Setup environment
-uv venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-uv pip install -e ".[dev]"
-
-# Install Playwright browsers
-playwright install chromium
-
-# Install MinerU locally
-pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
-# Download models (run once, ~15GB)
-magic-pdf model-download
-
-# Run tests
-pytest tests/ -v
-pytest tests/unit/ -v --cov=src
-pytest tests/integration/ -v -m "not slow"
-
-# Linting and formatting
-ruff check .
-ruff format .
-mypy src/
-
-# Run specific scraper
-python -m src.scrapers.wisconsin_scraper
-
-# Run Prefect flow
-prefect server start  # In one terminal
-python -m src.flows.fdd_pipeline  # In another
-
-# Database migrations
-alembic upgrade head
-alembic revision --autogenerate -m "Description"
-```
-
-## Common Development Tasks
+## Development Patterns
 
 ### Adding a New State Scraper
 
-1. Create new file in `src/scrapers/{state}_scraper.py`
-2. Inherit from `BaseScraper` class
-3. Implement required methods: `authenticate()`, `navigate_to_search()`, `extract_results()`, `download_document()`
-4. Add state configuration to `config/states.yaml`
-5. Register in `src/scrapers/__init__.py`
+1. Create `franchise_web_scraper/{STATE}_scraper.py`
+2. Follow pattern from `WI_scraper.py` or `minnesota_scraper.py`
+3. Implement methods: `login()`, `search_franchises()`, `get_document_details()`, `download_document()`
+4. Create corresponding flow in `flows/scrape_{state}.py`
+5. Add tests in `tests/test_{state}_scraper.py`
 
-### Adding a New LLM Model
+### Working with LLMs
 
-1. Create adapter in `src/llm/adapters/{model}_adapter.py`
-2. Implement `LLMAdapter` interface
-3. Add to model registry in `src/llm/registry.py`
-4. Update fallback chain in `config/llm_config.yaml`
+```python
+# Always use Instructor for structured outputs
+from models.fdd_models import FDDSection
+import instructor
 
-### Modifying Extraction Schema
+# Pattern for LLM extraction with fallback
+async def extract_section(text: str, model: str = "gemini-pro"):
+    client = instructor.from_gemini(...)  # or from_openai, from_ollama
+    return await client.create(
+        model=model,
+        response_model=FDDSection,
+        messages=[...]
+    )
+```
 
-1. Update Pydantic models in `src/models/fdd_schema.py`
-2. Generate new migration: `alembic revision --autogenerate`
-3. Update validation rules in `src/validators/schema_validator.py`
-4. Add tests for new fields
+### Database Operations
+
+```python
+# Always use utils.database functions
+from utils.database import get_supabase_client, store_franchise_data
+
+# Pattern for idempotent operations
+client = get_supabase_client()
+existing = client.table("franchises").select("*").eq("portal_id", id).execute()
+if not existing.data:
+    # Insert new record
+```
 
 ## Environment Configuration
 
-Required environment variables (create `.env` file):
+Create `.env` from `.env.template`:
 
 ```bash
 # LLM APIs
@@ -137,54 +128,64 @@ OLLAMA_BASE_URL=http://localhost:11434
 
 # Storage
 SUPABASE_URL=
-SUPABASE_KEY=
-GOOGLE_DRIVE_CREDENTIALS_PATH=
-
-# Prefect
-PREFECT_API_URL=
-PREFECT_API_KEY=
-
-# Scraping
-PROXY_URL=  # Optional
-USER_AGENT=  # Optional
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_KEY=
+GDRIVE_CREDS_JSON=  # Path to service account JSON
+GDRIVE_FOLDER_ID=
 
 # MinerU Local
-MINERU_MODEL_PATH=~/.mineru/models  # Path to downloaded models
-MINERU_DEVICE=cuda  # cuda or cpu
+MINERU_MODEL_PATH=~/.mineru/models
+MINERU_DEVICE=cuda  # or cpu
+MINERU_BATCH_SIZE=2
 ```
 
 ## Code Standards
 
-- Use type hints for all function signatures
-- Implement proper error handling with custom exceptions
-- Log at appropriate levels (DEBUG for details, INFO for flow, ERROR for failures)
-- Use async/await for I/O operations
-- Follow PEP 8 with 88-character line limit (Black formatting)
-- Document complex logic with inline comments
-- Create Pydantic models for all data structures
+- **Type hints required** for all functions
+- **Async/await** for I/O operations
+- **Pydantic models** for all data structures (see `models/`)
+- **Black formatting** with 88-char line limit
+- **Structured logging** with correlation IDs
+- **Test coverage target**: 80%+
 
-## Testing Guidelines
+## Common Issues
 
-- Unit tests for all business logic
-- Integration tests for external services (marked with `@pytest.mark.integration`)
-- Use `pytest-mock` for mocking external dependencies
-- Maintain >80% code coverage
-- Test both success and failure paths
+1. **Playwright timeout**: Check `--headed` mode, increase timeout, verify selectors
+2. **MinerU GPU errors**: Fallback to `MINERU_DEVICE=cpu`, check CUDA installation
+3. **LLM rate limits**: Implement exponential backoff, use fallback models
+4. **Duplicate documents**: Check `entity_operations.py` fuzzy matching logic
+5. **Large PDF memory issues**: Reduce `MINERU_BATCH_SIZE`, use CPU mode
 
-## Monitoring and Debugging
+## Testing Strategy
 
-- Check Prefect UI for flow runs: http://localhost:4200
-- Logs are structured JSON, searchable by correlation ID
-- Use `LOGURU_LEVEL=DEBUG` for verbose logging
-- Monitor retry attempts in `logs/retries.log`
-- Database queries logged with execution time
+```bash
+# Golden datasets for consistent testing
+tests/fixtures/golden_datasets/
 
-## Common Issues and Solutions
+# Test markers
+pytest -m unit        # Fast unit tests
+pytest -m integration # External service tests
+pytest -m performance # Performance benchmarks
+```
 
-1. **Playwright timeout**: Increase `timeout` in scraper config or check proxy
-2. **LLM extraction fails**: Check model availability, API limits, or schema complexity
-3. **Storage upload fails**: Verify credentials and quota limits
-4. **Memory issues with large PDFs**: Reduce batch size or use CPU mode for MinerU
-5. **Duplicate documents**: Check idempotency keys in database
-6. **MinerU GPU errors**: Ensure CUDA is properly installed, fallback to CPU mode
-7. **MinerU model download fails**: Check disk space (~15GB required) and network connection
+## Project Structure
+
+```
+franchise_web_scraper/  # State-specific scrapers
+flows/                  # Prefect workflow definitions  
+models/                 # Pydantic models for FDD sections
+prompts/               # LLM prompt templates (YAML)
+tasks/                 # Reusable scraping/processing tasks
+utils/                 # Database, logging, entity operations
+migrations/            # Supabase schema (SQL)
+tests/                 # Comprehensive test suite
+config.py              # Pydantic Settings configuration
+```
+
+## Important Notes
+
+- **UV is the package manager** - not pip or poetry
+- **MinerU requires ~15GB** disk space for models
+- **Always check existing patterns** before implementing new features
+- **Prefect decorators** required on all tasks/flows
+- **Idempotency is critical** - all operations must be retryable

@@ -78,14 +78,32 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Cost-effective for simple tasks
 
 ### Document Processing
-- **[MinerU/magic-pdf](https://github.com/opendatalab/MinerU)** (local) - GPU-accelerated layout analysis
-  - Deep learning-based document parsing
-  - Table and figure detection
-  - Section identification
-  - OCR integration
-  - GPU acceleration with CUDA support
-  - Batch processing capabilities
-  - ~15GB model download required
+- **[MinerU/magic-pdf](https://github.com/opendatalab/MinerU)** (1.3.12, local installation) - GPU-accelerated PDF processing
+  - **Purpose**: High-quality PDF to Markdown/JSON conversion with structure preservation
+  - **Key Features**:
+    - Deep learning-based layout analysis using state-of-the-art models
+    - Accurate table and figure detection with boundary recognition
+    - Mathematical formula preservation and rendering
+    - Multi-language OCR support (84 languages)
+    - Section identification and hierarchical structure extraction
+    - Automatic removal of headers, footers, and page numbers
+  - **Performance**:
+    - GPU acceleration with CUDA support (10,000+ tokens/s on RTX 4090)
+    - 10-50x faster than CPU-based alternatives
+    - Batch processing capabilities with configurable batch size
+    - Multi-GPU support via tensor parallelism
+  - **Requirements**:
+    - NVIDIA GPU with Turing architecture or newer (GTX 1060+)
+    - 6-8GB VRAM minimum, 16GB+ recommended for optimal performance
+    - ~15GB storage for model files (one-time download)
+    - CUDA-compatible drivers
+  - **Configuration**:
+    - `MINERU_DEVICE`: cuda/cpu mode selection
+    - `MINERU_BATCH_SIZE`: Memory optimization (default: 2)
+    - `MINERU_MODEL_PATH`: Model storage location
+  - **Fallback Options**:
+    - CPU mode for environments without GPU
+    - PyPDF2 for simple text extraction when MinerU fails
 - **[PyPDF2](https://pypdf2.readthedocs.io/)** (3.0+) - PDF manipulation
   - Page splitting
   - Metadata extraction

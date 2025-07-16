@@ -1,0 +1,121 @@
+name: "Item 6 - Other Fees Extraction"
+description: "Extract ongoing and recurring fees from FDD Item 6"
+
+system_prompt: |
+  You are an expert at extracting ongoing fee information from FDD Item 6 sections.
+  
+  Your task is to extract ALL recurring and ongoing fees mentioned, including:
+  - Royalty fees (percentage or fixed amount)
+  - Advertising/marketing fees
+  - Technology fees
+  - Training fees
+  - Transfer fees
+  - Any other ongoing or periodic fees
+  
+  For each fee, capture:
+  - The exact amount or percentage
+  - How it's calculated (gross sales, fixed, etc.)
+  - Payment frequency (weekly, monthly, etc.)
+  - Any minimum or maximum amounts
+  - Special conditions or exemptions
+
+user_prompt: |
+  Extract all ongoing fee information from this FDD Item 6 section.
+  
+  Franchise: {{ franchise_name }}
+  Document Year: {{ issue_year }}
+  
+  Content:
+  {{ section_content }}
+
+few_shot_examples:
+  - input: |
+      ITEM 6
+      OTHER FEES
+      
+      Royalty: 6% of Gross Sales, payable weekly on Tuesday for the preceding week.
+      
+      Marketing Fund Contribution: 2% of Gross Sales, payable at the same time as Royalty.
+      
+      Technology Fee: $299 per month, due on the 1st of each month.
+      
+      Transfer Fee: $15,000 if you sell your franchise to a qualified buyer.
+    
+    output:
+      royalty_fee:
+        type: "percentage"
+        amount: 6.0
+        basis: "gross_sales"
+        frequency: "weekly"
+        payment_day: "Tuesday"
+        notes: "for the preceding week"
+      
+      marketing_fee:
+        type: "percentage"
+        amount: 2.0
+        basis: "gross_sales"
+        frequency: "weekly"
+        payment_timing: "same time as royalty"
+      
+      technology_fee:
+        type: "fixed"
+        amount: 299.0
+        currency: "USD"
+        frequency: "monthly"
+        due_date: "1st of each month"
+      
+      transfer_fee:
+        type: "fixed"
+        amount: 15000.0
+        currency: "USD"
+        trigger: "sale of franchise to qualified buyer"
+
+  - input: |
+      6. OTHER FEES
+      
+      Continuing Royalty Fee: You must pay us a continuing royalty fee equal to 5% of 
+      your monthly Gross Revenue. The minimum royalty is $500 per month.
+      
+      Brand Fund: 1.5% of Gross Revenue, paid monthly. We may increase this to 3% on 
+      60 days notice.
+      
+      Local Advertising: You must spend at least 2% of Gross Revenue on local advertising.
+    
+    output:
+      royalty_fee:
+        type: "percentage"
+        amount: 5.0
+        basis: "gross_revenue"
+        frequency: "monthly"
+        minimum_amount: 500.0
+        currency: "USD"
+      
+      brand_fund_fee:
+        type: "percentage"
+        amount: 1.5
+        basis: "gross_revenue"
+        frequency: "monthly"
+        maximum_amount: 3.0
+        change_notice: "60 days"
+        notes: "May increase to 3% on 60 days notice"
+      
+      local_advertising_requirement:
+        type: "percentage"
+        amount: 2.0
+        basis: "gross_revenue"
+        frequency: "ongoing"
+        notes: "Minimum local advertising spend requirement"
+
+validation_rules:
+  - field: royalty_fee
+    required: true
+    properties:
+      - field: type
+        enum: ["percentage", "fixed", "hybrid"]
+      - field: amount
+        type: number
+        min: 0
+        max: 100
+  - field: frequency
+    type: string
+    enum: ["weekly", "monthly", "quarterly", "annually", "ongoing"]
