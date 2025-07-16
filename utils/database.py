@@ -1011,6 +1011,55 @@ class DatabaseManager:
             )
             raise
 
+    async def fetch_one(self, query: str, *args) -> Optional[Dict[str, Any]]:
+        """Execute query and return first result (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            def _execute():
+                try:
+                    with self.get_session() as session:
+                        result = session.execute(text(query), args)
+                        row = result.fetchone()
+                        if row:
+                            return dict(row._mapping)
+                        return None
+                except Exception as e:
+                    logger.error(f"Database fetch_one error: {e}")
+                    raise
+            
+            return await loop.run_in_executor(executor, _execute)
+    
+    async def fetch_all(self, query: str, *args) -> List[Dict[str, Any]]:
+        """Execute query and return all results (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            def _execute():
+                try:
+                    with self.get_session() as session:
+                        result = session.execute(text(query), args)
+                        rows = result.fetchall()
+                        return [dict(row._mapping) for row in rows]
+                except Exception as e:
+                    logger.error(f"Database fetch_all error: {e}")
+                    raise
+            
+            return await loop.run_in_executor(executor, _execute)
+    
+    async def execute(self, query: str, *args) -> None:
+        """Execute query without returning results (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            def _execute():
+                try:
+                    with self.get_session() as session:
+                        session.execute(text(query), args)
+                        session.commit()
+                except Exception as e:
+                    logger.error(f"Database execute error: {e}")
+                    raise
+            
+            return await loop.run_in_executor(executor, _execute)
+
     def get_table_statistics(self, table_name: str) -> Dict[str, Any]:
         """Get comprehensive table statistics."""
         try:

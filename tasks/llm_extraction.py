@@ -25,12 +25,12 @@ from tenacity import (
 from config import get_settings
 from models.fdd import FDD
 from models.section import FDDSection
-from models.item5_fees import Item5FeesResponse
-from models.item6_other_fees import Item6OtherFeesResponse
-from models.item7_investment import Item7InvestmentResponse
-from models.item19_fpr import Item19FPRResponse
-from models.item20_outlets import Item20OutletsResponse
-from models.item21_financials import Item21FinancialsResponse
+from models.item5_fees_response import Item5FeesResponse
+from models.item6_other_fees_response import Item6OtherFeesResponse
+from models.item7_investment_response import Item7InvestmentResponse
+from models.item19_fpr_response import Item19FPRResponse
+from models.item20_outlets_response import Item20OutletsResponse
+from models.item21_financials_response import Item21FinancialsResponse
 from utils.prompt_loader import get_prompt_loader
 from utils.extraction_monitoring import get_extraction_monitor, MonitoredExtraction
 

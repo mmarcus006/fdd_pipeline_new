@@ -466,11 +466,11 @@ class SectionMetadataManager:
 class DocumentSegmentationSystem:
     """Main document segmentation system coordinating all operations."""
 
-    def __init__(self):
+    def __init__(self, drive_manager=None):
         self.settings = get_settings()
         self.pdf_splitter = PDFSplitter()
         self.metadata_manager = SectionMetadataManager()
-        self.drive_manager = DriveManager()
+        self.drive_manager = drive_manager or DriveManager()
         self.db_manager = get_database_manager()
         self.logger = PipelineLogger("document_segmentation")
 
@@ -669,7 +669,10 @@ from io import BytesIO
 
 @task(name="segment_fdd_document", retries=2)
 def segment_fdd_document(
-    fdd_id: UUID, source_pdf_path: str, section_boundaries: List[Dict]
+    fdd_id: UUID,
+    source_pdf_path: str,
+    section_boundaries: List[Dict],
+    use_local_drive: bool = False,
 ) -> Dict:
     """
     Prefect task to segment an FDD document into sections.
@@ -678,9 +681,7 @@ def segment_fdd_document(
         fdd_id: FDD document ID
         source_pdf_path: Path to source PDF file
         section_boundaries: List of section boundary dictionaries
-
-    Returns:
-        Segmentation results dictionary
+        use_local_drive: If True, uses the LocalDriveManager for saving files.
     """
     logger = PipelineLogger("segment_fdd_document").bind(fdd_id=str(fdd_id))
 
@@ -704,7 +705,12 @@ def segment_fdd_document(
         ]
 
         # Initialize segmentation system
-        segmentation_system = DocumentSegmentationSystem()
+        drive_manager = None
+        if use_local_drive:
+            from utils.local_drive import get_local_drive_manager
+            drive_manager = get_local_drive_manager()
+
+        segmentation_system = DocumentSegmentationSystem(drive_manager=drive_manager)
 
         # Perform segmentation
         created_sections, progress = segmentation_system.segment_document(
