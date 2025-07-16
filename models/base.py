@@ -1,6 +1,6 @@
 """Base models and common utilities for FDD Pipeline."""
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from uuid import UUID
@@ -11,10 +11,11 @@ class Address(BaseModel):
     """Embedded address model for franchisor addresses."""
     street: str
     city: str
-    state: str = Field(..., regex="^[A-Z]{2}$")
+    state: str = Field(..., pattern="^[A-Z]{2}$")
     zip_code: str = Field(..., alias="zip")
     
-    @validator('zip_code')
+    @field_validator('zip_code')
+    @classmethod
     def validate_zip(cls, v):
         if not re.match(r"^\d{5}(-\d{4})?$", v):
             raise ValueError("Invalid ZIP code format")

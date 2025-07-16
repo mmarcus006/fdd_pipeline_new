@@ -1,6 +1,6 @@
 """Item 19 - Financial Performance Representations models."""
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 from uuid import UUID
@@ -41,13 +41,13 @@ class FPRBase(BaseModel):
     
     disclaimers: Optional[str] = None
     
-    @root_validator
-    def validate_revenue_range(cls, values):
+    @model_validator(mode='after')
+    def validate_revenue_range(self):
         """Ensure revenue metrics are consistent."""
-        low = values.get('low_revenue_cents')
-        high = values.get('high_revenue_cents')
-        avg = values.get('average_revenue_cents')
-        median = values.get('median_revenue_cents')
+        low = self.low_revenue_cents
+        high = self.high_revenue_cents
+        avg = self.average_revenue_cents
+        median = self.median_revenue_cents
         
         if all(v is not None for v in [low, high, avg]):
             if not (low <= avg <= high):
@@ -57,9 +57,10 @@ class FPRBase(BaseModel):
             if not (low <= median <= high):
                 raise ValueError("Median revenue must be between low and high")
         
-        return values
+        return self
     
-    @validator('profit_margin_percentage')
+    @field_validator('profit_margin_percentage')
+    @classmethod
     def validate_profit_margin(cls, v):
         """Flag unusual profit margins."""
         if v is not None:
@@ -77,5 +78,4 @@ class FPR(FPRBase):
     section_id: UUID
     created_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

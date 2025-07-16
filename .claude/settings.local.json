@@ -2,12 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "github"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

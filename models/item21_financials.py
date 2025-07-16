@@ -1,6 +1,6 @@
 """Item 21 - Financial Statements models."""
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import datetime, date
 from uuid import UUID
@@ -39,13 +39,13 @@ class FinancialsBase(BaseModel):
     auditor_name: Optional[str] = None
     audit_opinion: Optional[AuditOpinion] = None
     
-    @root_validator
-    def validate_accounting_equations(cls, values):
+    @model_validator(mode='after')
+    def validate_accounting_equations(self):
         """Validate basic accounting equations where possible."""
         # Revenue - COGS = Gross Profit
-        revenue = values.get('total_revenue_cents')
-        cogs = values.get('cost_of_goods_cents')
-        gross = values.get('gross_profit_cents')
+        revenue = self.total_revenue_cents
+        cogs = self.cost_of_goods_cents
+        gross = self.gross_profit_cents
         
         if all(v is not None for v in [revenue, cogs, gross]):
             calculated_gross = revenue - cogs
@@ -56,9 +56,9 @@ class FinancialsBase(BaseModel):
                 )
         
         # Assets = Liabilities + Equity
-        assets = values.get('total_assets_cents')
-        liabilities = values.get('total_liabilities_cents')
-        equity = values.get('total_equity_cents')
+        assets = self.total_assets_cents
+        liabilities = self.total_liabilities_cents
+        equity = self.total_equity_cents
         
         if all(v is not None for v in [assets, liabilities, equity]):
             calculated_equity = assets - liabilities
@@ -68,14 +68,14 @@ class FinancialsBase(BaseModel):
                     f"{assets} - {liabilities} = {calculated_equity}, not {equity}"
                 )
         
-        return values
+        return self
     
-    @root_validator
-    def validate_ratios(cls, values):
+    @model_validator(mode='after')
+    def validate_ratios(self):
         """Validate financial ratios are reasonable."""
         # Current ratio check
-        current_assets = values.get('current_assets_cents')
-        current_liabilities = values.get('current_liabilities_cents')
+        current_assets = self.current_assets_cents
+        current_liabilities = self.current_liabilities_cents
         
         if current_assets is not None and current_liabilities is not None:
             if current_liabilities > 0:
@@ -85,14 +85,14 @@ class FinancialsBase(BaseModel):
                     pass
         
         # Franchise revenue shouldn't exceed total revenue
-        total_rev = values.get('total_revenue_cents')
-        franchise_rev = values.get('franchise_revenue_cents')
+        total_rev = self.total_revenue_cents
+        franchise_rev = self.franchise_revenue_cents
         
         if total_rev is not None and franchise_rev is not None:
             if franchise_rev > total_rev:
                 raise ValueError("Franchise revenue cannot exceed total revenue")
         
-        return values
+        return self
 
 
 class Financials(FinancialsBase):
@@ -100,5 +100,4 @@ class Financials(FinancialsBase):
     section_id: UUID
     created_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

@@ -75,10 +75,14 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Cost-effective for simple tasks
 
 ### Document Processing
-- **MinerU API Client** (custom) - Layout analysis
-  - Table detection
+- **[MinerU/magic-pdf](https://github.com/opendatalab/MinerU)** (local) - GPU-accelerated layout analysis
+  - Deep learning-based document parsing
+  - Table and figure detection
   - Section identification
   - OCR integration
+  - GPU acceleration with CUDA support
+  - Batch processing capabilities
+  - ~15GB model download required
 - **[PyPDF2](https://pypdf2.readthedocs.io/)** (3.0+) - PDF manipulation
   - Page splitting
   - Metadata extraction
@@ -176,8 +180,13 @@ This document provides a comprehensive overview of all technologies, frameworks,
 
 ### System Requirements
 - **Minimum**: 8GB RAM, 4 CPU cores
-- **Recommended**: 16GB RAM, 8 CPU cores
-- **GPU**: Optional, for local LLM inference (8GB VRAM minimum)
+- **Recommended**: 16GB RAM, 8 CPU cores, NVIDIA GPU (6GB+ VRAM)
+- **GPU**: 
+  - Required for optimal MinerU performance
+  - NVIDIA GPU with CUDA support (GTX 1060 or better)
+  - 6GB+ VRAM for document processing
+  - 8GB+ VRAM for local LLM inference
+- **Storage**: 65GB+ free space (15GB for MinerU models)
 
 ## Version Pinning Strategy
 - Exact versions in `requirements.txt` for production

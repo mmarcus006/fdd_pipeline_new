@@ -1,6 +1,6 @@
 """Item 5 - Initial Fees models."""
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from uuid import UUID
 from enum import Enum
@@ -24,7 +24,8 @@ class InitialFeeBase(BaseModel):
     due_at: Optional[DueAt] = None
     notes: Optional[str] = None
     
-    @validator('amount_cents')
+    @field_validator('amount_cents')
+    @classmethod
     def validate_reasonable_amount(cls, v):
         """Ensure amount is reasonable (< $10M)."""
         if v > ValidationConfig.MAX_FEE_AMOUNT:
@@ -41,5 +42,4 @@ class InitialFee(InitialFeeBase):
     """Initial fee with section reference."""
     section_id: UUID
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

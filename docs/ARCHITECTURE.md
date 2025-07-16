@@ -24,7 +24,7 @@ graph TB
     end
     
     subgraph "Processing Layer"
-        MU[MinerU<br/>Layout Analysis]
+        MU[MinerU Local<br/>GPU Layout Analysis]
         SEG[Document<br/>Segmentation]
         LLM[LLM Extraction<br/>Instructor]
     end
@@ -109,9 +109,11 @@ Google Drive Structure:
 **Purpose**: Transform unstructured PDFs into structured, queryable data.
 
 **Pipeline Stages**:
-1. **Layout Analysis** (MinerU API)
+1. **Layout Analysis** (MinerU Local)
+   - GPU-accelerated document parsing
    - Detect tables, text blocks, titles
    - Generate document structure JSON
+   - Process multiple PDFs in parallel
    
 2. **Section Identification**
    - Rule-based header detection
@@ -310,9 +312,10 @@ def select_model(section: int, complexity: str) -> str:
 - **Compute**: Local Prefect agents can be upgraded as needed
 
 ### Bottlenecks & Mitigation
-1. **MinerU API Rate Limits**
-   - Solution: Queue with rate limiting
-   - Future: Self-hosted MinerU
+1. **MinerU Processing Speed**
+   - Solution: GPU acceleration with batch processing
+   - Fallback: CPU mode for systems without GPU
+   - Scale: Multiple GPU workers for high volume
 
 2. **LLM API Costs**
    - Solution: Local models for simple tasks
@@ -370,6 +373,8 @@ logger.info("section_extracted",
 - PostgreSQL (Docker)
 - Ollama (for local LLMs)
 - Google Drive (service account)
+- MinerU models (~15GB)
+- CUDA toolkit (optional)
 ```
 
 ### Deployment Architecture

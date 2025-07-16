@@ -13,9 +13,26 @@ from .item7_investment import InitialInvestment, InitialInvestmentBase, InitialI
 from .item19_fpr import FPR, FPRBase, DisclosureType
 from .item20_outlets import (
     OutletSummary, OutletSummaryBase, StateCount, StateCountBase, 
-    OutletStateSummary, OutletType, validate_state_total
+    OutletStateSummary, OutletType, validate_state_total, calculate_outlet_growth_rate
 )
 from .item21_financials import Financials, FinancialsBase, AuditOpinion
+
+# Operational models
+from .scrape_metadata import ScrapeMetadata, ScrapeMetadataBase
+from .pipeline_log import PipelineLog, PipelineLogBase, PrefectRun, PrefectRunBase, LogLevel
+
+# Generic JSON storage
+from .item_json import (
+    ItemJSON, ItemJSONBase,
+    Item1Schema, Item2Schema, Item3Schema, Item4Schema, Item8Schema, Item9Schema,
+    Item10Schema, Item11Schema, Item12Schema, Item13Schema, Item14Schema, Item15Schema,
+    Item16Schema, Item17Schema, Item18Schema, Item22Schema, Item23Schema, Item24Schema
+)
+
+# Composite models
+from .composite import (
+    FDDExtractionProgress, FranchisorFDDSummary, SystemHealthSummary, ExtractionQualityMetrics
+)
 
 __all__ = [
     # Base
@@ -32,6 +49,19 @@ __all__ = [
     "InitialInvestment", "InitialInvestmentBase", "InitialInvestmentSummary",
     "FPR", "FPRBase", "DisclosureType",
     "OutletSummary", "OutletSummaryBase", "StateCount", "StateCountBase",
-    "OutletStateSummary", "OutletType", "validate_state_total",
+    "OutletStateSummary", "OutletType", "validate_state_total", "calculate_outlet_growth_rate",
     "Financials", "FinancialsBase", "AuditOpinion",
+    
+    # Operational models
+    "ScrapeMetadata", "ScrapeMetadataBase",
+    "PipelineLog", "PipelineLogBase", "PrefectRun", "PrefectRunBase", "LogLevel",
+    
+    # Generic JSON storage
+    "ItemJSON", "ItemJSONBase",
+    "Item1Schema", "Item2Schema", "Item3Schema", "Item4Schema", "Item8Schema", "Item9Schema",
+    "Item10Schema", "Item11Schema", "Item12Schema", "Item13Schema", "Item14Schema", "Item15Schema",
+    "Item16Schema", "Item17Schema", "Item18Schema", "Item22Schema", "Item23Schema", "Item24Schema",
+    
+    # Composite models
+    "FDDExtractionProgress", "FranchisorFDDSummary", "SystemHealthSummary", "ExtractionQualityMetrics",
 ]

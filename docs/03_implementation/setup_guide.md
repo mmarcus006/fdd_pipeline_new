@@ -23,9 +23,10 @@ This guide walks you through setting up the FDD Pipeline development environment
 
 ### System Requirements
 
-- **RAM**: Minimum 8GB, recommended 16GB
-- **Storage**: 50GB free space for documents and models
-- **Network**: Stable internet for API calls
+- **RAM**: Minimum 8GB, recommended 16GB (32GB for GPU processing)
+- **Storage**: 65GB free space (50GB for documents + 15GB for MinerU models)
+- **Network**: Stable internet for API calls and model downloads
+- **GPU**: CUDA-capable GPU recommended (GTX 1060 or better)
 
 ## Step 1: Clone Repository
 
@@ -124,22 +125,35 @@ uv pip install -e ".[dev]"
    - Share folder with service account email
    - Note the folder ID from URL
 
-### 3.3 MinerU API Setup
+### 3.3 MinerU Local Setup
 
-1. **Get API Access**
-   - Register at MinerU platform
-   - Generate API key
-   - Note endpoint URL
-
-2. **Test Connection**
-   ```python
-   import httpx
+1. **Install MinerU**
+   ```bash
+   # Install with GPU support
+   pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
    
-   response = httpx.get(
-       "https://api.mineru.com/v1/status",
-       headers={"Authorization": f"Bearer {MINERU_API_KEY}"}
-   )
-   print(response.json())
+   # Or CPU-only version (slower)
+   pip install magic-pdf
+   ```
+
+2. **Download Models**
+   ```bash
+   # Download all models (~15GB)
+   magic-pdf model-download
+   
+   # Models will be saved to ~/.mineru/models
+   ```
+
+3. **Verify Installation**
+   ```bash
+   # Check version
+   magic-pdf --version
+   
+   # Test GPU support
+   python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+   
+   # Process test PDF
+   magic-pdf pdf-command --pdf sample.pdf --output-dir test_output
    ```
 
 ### 3.4 LLM Providers Setup
@@ -196,9 +210,10 @@ SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 GDRIVE_CREDS_JSON=/path/to/service-account-key.json
 GDRIVE_FOLDER_ID=1a2b3c4d5e6f7g8h9i0j
 
-# MinerU API
-MINERU_API_KEY=mk_1234567890abcdef
-MINERU_BASE_URL=https://api.mineru.com/v1
+# MinerU Local
+MINERU_MODEL_PATH=~/.mineru/models
+MINERU_DEVICE=cuda  # or 'cpu' if no GPU
+MINERU_BATCH_SIZE=2  # Adjust based on GPU memory
 
 # LLM Providers
 GEMINI_API_KEY=AIzaSy...
@@ -228,7 +243,8 @@ Expected output:
 ```
 ✓ Supabase connection successful
 ✓ Google Drive authenticated
-✓ MinerU API accessible
+✓ MinerU models loaded
+✓ CUDA device available (or CPU mode)
 ✓ Gemini API validated
 ✓ Ollama server running
 ✓ SMTP configuration valid
@@ -381,6 +397,30 @@ creds = service_account.Credentials.from_service_account_file(
     '/path/to/key.json'
 )
 print("Auth successful")
+```
+
+### Issue: MinerU GPU not detected
+```bash
+# Check GPU availability
+nvidia-smi  # For NVIDIA GPUs
+
+# Verify CUDA installation
+python -c "import torch; print(torch.cuda.is_available())"
+
+# Fallback to CPU mode
+export MINERU_DEVICE=cpu
+```
+
+### Issue: MinerU models not loading
+```bash
+# Check model directory
+ls ~/.mineru/models
+
+# Re-download if missing
+magic-pdf model-download
+
+# Verify disk space
+df -h ~/.mineru
 ```
 
 ### Issue: Ollama models not loading

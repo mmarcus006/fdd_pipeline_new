@@ -1,7 +1,7 @@
 """Item 20 - Outlet Information models."""
 
-from pydantic import BaseModel, Field, validator, root_validator
-from typing import List
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
@@ -25,15 +25,15 @@ class OutletSummaryBase(BaseModel):
     transferred_out: int = Field(default=0, ge=0)
     count_end: int = Field(..., ge=0)
     
-    @root_validator
-    def validate_outlet_math(cls, values):
+    @model_validator(mode='after')
+    def validate_outlet_math(self):
         """Ensure outlet counts balance."""
-        start = values.get('count_start', 0)
-        opened = values.get('opened', 0)
-        closed = values.get('closed', 0)
-        transferred_in = values.get('transferred_in', 0)
-        transferred_out = values.get('transferred_out', 0)
-        end = values.get('count_end', 0)
+        start = self.count_start
+        opened = self.opened
+        closed = self.closed
+        transferred_in = self.transferred_in
+        transferred_out = self.transferred_out
+        end = self.count_end
         
         calculated_end = start + opened - closed + transferred_in - transferred_out
         
@@ -44,9 +44,10 @@ class OutletSummaryBase(BaseModel):
                 f"= {calculated_end}, but count_end = {end}"
             )
         
-        return values
+        return self
     
-    @validator('fiscal_year')
+    @field_validator('fiscal_year')
+    @classmethod
     def validate_reasonable_year(cls, v):
         """Ensure year is reasonable."""
         current_year = datetime.now().year
@@ -59,13 +60,12 @@ class OutletSummary(OutletSummaryBase):
     """Outlet summary with section reference."""
     section_id: UUID
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class StateCountBase(BaseModel):
     """Base model for state-by-state outlet counts."""
-    state_code: str = Field(..., regex="^[A-Z]{2}$")
+    state_code: str = Field(..., pattern="^[A-Z]{2}$")
     franchised_count: int = Field(default=0, ge=0)
     company_owned_count: int = Field(default=0, ge=0)
     
@@ -73,7 +73,8 @@ class StateCountBase(BaseModel):
     def total_count(self) -> int:
         return self.franchised_count + self.company_owned_count
     
-    @validator('state_code')
+    @field_validator('state_code')
+    @classmethod
     def validate_state_code(cls, v):
         """Ensure valid US state code."""
         valid_states = {
@@ -93,8 +94,7 @@ class StateCount(StateCountBase):
     """State count with section reference."""
     section_id: UUID
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class OutletStateSummary(BaseModel):
@@ -104,13 +104,13 @@ class OutletStateSummary(BaseModel):
     total_franchised: int = 0
     total_company_owned: int = 0
     
-    @root_validator
-    def calculate_totals(cls, values):
+    @model_validator(mode='after')
+    def calculate_totals(self):
         """Calculate totals from states."""
-        states = values.get('states', [])
-        values['total_franchised'] = sum(s.franchised_count for s in states)
-        values['total_company_owned'] = sum(s.company_owned_count for s in states)
-        return values
+        states = self.states
+        self.total_franchised = sum(s.franchised_count for s in states)
+        self.total_company_owned = sum(s.company_owned_count for s in states)
+        return self
 
 
 def validate_state_total(state_counts: List[StateCount], 
@@ -137,3 +137,22 @@ def validate_state_total(state_counts: List[StateCount],
                 state_total_company == outlet_company)
     
     return True
+
+
+def calculate_outlet_growth_rate(summaries: List[OutletSummary]) -> Optional[float]:
+    """Calculate year-over-year outlet growth rate."""
+    if len(summaries) < 2:
+        return None
+    
+    # Sort by fiscal year
+    sorted_summaries = sorted(summaries, key=lambda x: x.fiscal_year)
+    
+    # Get most recent two years
+    current_year = sorted_summaries[-1]
+    previous_year = sorted_summaries[-2]
+    
+    if previous_year.count_end == 0:
+        return None
+    
+    growth_rate = ((current_year.count_end - previous_year.count_end) / previous_year.count_end) * 100
+    return round(growth_rate, 2)

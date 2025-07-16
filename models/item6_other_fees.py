@@ -1,6 +1,6 @@
 """Item 6 - Other Fees models."""
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from uuid import UUID
 from enum import Enum
@@ -36,27 +36,28 @@ class OtherFeeBase(BaseModel):
     maximum_cents: Optional[int] = Field(None, ge=0)
     remarks: Optional[str] = None
     
-    @root_validator
-    def validate_amount_type(cls, values):
+    @model_validator(mode='after')
+    def validate_amount_type(self):
         """Ensure either amount_cents OR amount_percentage is set."""
-        cents = values.get('amount_cents')
-        pct = values.get('amount_percentage')
+        cents = self.amount_cents
+        pct = self.amount_percentage
         
         if (cents is None and pct is None) or (cents is not None and pct is not None):
             raise ValueError("Must specify either amount_cents or amount_percentage, not both")
-        return values
+        return self
     
-    @root_validator
-    def validate_min_max(cls, values):
+    @model_validator(mode='after')
+    def validate_min_max(self):
         """Ensure max >= min if both specified."""
-        min_val = values.get('minimum_cents')
-        max_val = values.get('maximum_cents')
+        min_val = self.minimum_cents
+        max_val = self.maximum_cents
         
         if min_val is not None and max_val is not None and max_val < min_val:
             raise ValueError("maximum_cents must be >= minimum_cents")
-        return values
+        return self
     
-    @validator('amount_percentage')
+    @field_validator('amount_percentage')
+    @classmethod
     def validate_percentage(cls, v):
         """Common sense check for percentages."""
         if v is not None and v > 50:
@@ -70,5 +71,4 @@ class OtherFee(OtherFeeBase):
     """Other fee with section reference."""
     section_id: UUID
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

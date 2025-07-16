@@ -8,9 +8,10 @@ This guide provides step-by-step instructions for deploying the FDD Pipeline in 
 
 ### System Requirements
 - Python 3.11 or higher
-- 4GB+ RAM available
-- 10GB+ disk space for data and logs
+- 8GB+ RAM available (16GB+ recommended for MinerU)
+- 25GB+ disk space (10GB for data/logs + 15GB for MinerU models)
 - Windows, macOS, or Linux
+- CUDA-capable GPU (optional but recommended for MinerU)
 
 ### Required Software
 - Git
@@ -90,6 +91,11 @@ LOG_LEVEL=INFO
 MAX_WORKERS=4
 RETRY_ATTEMPTS=3
 RETRY_DELAY_SECONDS=60
+
+# MinerU Local Configuration
+MINERU_MODEL_PATH=~/.mineru/models
+MINERU_DEVICE=cuda  # or 'cpu' if no GPU
+MINERU_BATCH_SIZE=2  # Adjust based on GPU memory
 ```
 
 ### 5. Set Up Google Service Account
@@ -124,6 +130,22 @@ brew install chromedriver
 # Linux
 sudo apt-get update
 sudo apt-get install chromium-chromedriver
+```
+
+### 8. Install MinerU Local
+
+```bash
+# Install MinerU with full dependencies
+pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+
+# Download models (one-time setup, ~15GB)
+magic-pdf model-download
+
+# Verify installation
+magic-pdf --version
+
+# Test GPU availability (if applicable)
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 ```
 
 ## Prefect Deployment
@@ -225,7 +247,9 @@ prefect deployment run minnesota-scrape/prod
 - [ ] Google Drive permissions verified
 - [ ] Email notifications tested
 - [ ] ChromeDriver installed and accessible
-- [ ] Sufficient disk space available
+- [ ] MinerU models downloaded (~15GB)
+- [ ] GPU drivers installed (if using CUDA)
+- [ ] Sufficient disk space available (25GB+)
 
 ### Deployment
 - [ ] Prefect server running

@@ -171,34 +171,49 @@ This document explains the reasoning behind each technology choice in the FDD Pi
 
 ## Document Processing
 
-### Choice: MinerU
+### Choice: MinerU (Local Installation)
 
-**Why MinerU?**
-- **AI-powered**: Best accuracy for complex layouts
-- **Table detection**: Critical for financial data
+**Why MinerU Local?**
+- **AI-powered**: Best accuracy for complex layouts using deep learning models
+- **GPU acceleration**: 10-50x faster than CPU-based alternatives
+- **No API costs**: One-time model download, unlimited processing
+- **Table detection**: Critical for financial data extraction
 - **Section identification**: Helps split documents accurately
-- **API available**: Don't need GPU infrastructure
-- **Active development**: Rapidly improving
+- **Full control**: No rate limits, network latency, or service dependencies
+- **Privacy**: Documents never leave your infrastructure
+- **Active development**: Rapidly improving with open-source community
+
+**Why Local Instead of API?**
+- **Cost savings**: API costs would exceed $5,000/month at our volume
+- **Performance**: Local GPU processing faster than API round trips
+- **Reliability**: No dependency on external service availability
+- **Privacy**: Sensitive financial documents stay in-house
+- **Scalability**: Can process in parallel limited only by hardware
 
 **Alternatives Considered:**
 
 | Tool | Pros | Cons | Why Not Chosen |
 |------|------|------|----------------|
-| Adobe API | Industry leader | Expensive, less flexible | Cost prohibitive at scale |
-| Textract (AWS) | Good accuracy, integrated | AWS lock-in, cost | MinerU more accurate for our docs |
+| MinerU API | No infrastructure needed | Expensive at scale, network dependency | $5K+/month for our volume |
+| Adobe API | Industry leader | Extremely expensive, less flexible | Cost prohibitive at scale |
+| Textract (AWS) | Good accuracy, integrated | AWS lock-in, high cost | MinerU more accurate for our docs |
 | Azure Form Recognizer | Good for forms | Not optimized for documents | FDDs aren't forms |
 | Tesseract OCR | Free, open source | Poor layout understanding | Not smart enough |
 | PyPDF2 only | Simple, fast | No layout analysis | Need structure detection |
+| Unstructured.io | Good accuracy | API costs, less control | Similar cost issues |
 
 **Trade-offs Accepted:**
-- Dependency on external API
-- Costs per document
-- Newer tool, less proven
+- Requires GPU hardware (one-time investment)
+- 15GB model download needed
+- More complex deployment than API
+- Need to manage GPU resources
 
 **Mitigation:**
-- Can self-host MinerU if needed
-- Fallback to PyPDF2 for simple extractions
-- Cache results to avoid reprocessing
+- Fallback to CPU mode for environments without GPU
+- PyPDF2 as emergency fallback for simple extractions
+- Docker container includes all dependencies
+- Batch processing to maximize GPU utilization
+- Model download automated in setup scripts
 
 ## LLM Strategy
 
@@ -318,7 +333,7 @@ This document explains the reasoning behind each technology choice in the FDD Pi
 | Supabase | Medium | PostgreSQL portable, can self-host |
 | Google Drive | Low | Standard API, can migrate |
 | Playwright | Low | Industry standard for browser automation |
-| MinerU | Medium | Fallback to PyPDF2, can self-host |
+| MinerU Local | Low | Already self-hosted, CPU fallback available |
 | Multi-LLM | Low | Multiple providers reduce risk |
 | Instructor | Low | Thin wrapper, can remove |
 | Pydantic Settings | Low | Standard Python, well supported |
@@ -326,9 +341,10 @@ This document explains the reasoning behind each technology choice in the FDD Pi
 ### Future Considerations
 
 **6-Month Horizon:**
-- Evaluate self-hosting MinerU for cost savings
+- Optimize MinerU GPU utilization with better batching
 - Consider adding Redis for caching
 - Explore vector database for semantic search
+- Evaluate multi-GPU setup for higher throughput
 
 **12-Month Horizon:**
 - Fine-tune extraction models for better accuracy

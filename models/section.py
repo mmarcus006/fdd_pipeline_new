@@ -1,6 +1,6 @@
 """FDD section models for FDD Pipeline."""
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -25,15 +25,14 @@ class FDDSectionBase(BaseModel):
     drive_path: Optional[str] = None
     drive_file_id: Optional[str] = None
     
-    @root_validator
-    def validate_page_range(cls, values):
-        start = values.get('start_page')
-        end = values.get('end_page')
-        if start and end and end < start:
+    @model_validator(mode='after')
+    def validate_page_range(self):
+        if self.start_page and self.end_page and self.end_page < self.start_page:
             raise ValueError("end_page must be >= start_page")
-        return values
+        return self
     
-    @validator('item_no')
+    @field_validator('item_no')
+    @classmethod
     def validate_item_no(cls, v):
         """Map item numbers to standard names."""
         item_names = {
@@ -76,5 +75,4 @@ class FDDSection(FDDSectionBase):
     created_at: datetime
     extracted_at: Optional[datetime] = None
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

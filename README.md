@@ -7,7 +7,7 @@ The FDD Pipeline is an automated system for acquiring, processing, and analyzing
 ## Key Features
 
 - 🌐 **Automated Web Scraping**: Crawls Minnesota and Wisconsin franchise portals weekly
-- 📄 **Intelligent Document Processing**: Uses MinerU for layout analysis and segmentation
+- 📄 **Intelligent Document Processing**: Uses MinerU (local GPU-accelerated) for layout analysis and segmentation
 - 🤖 **LLM-Powered Extraction**: Leverages Gemini Pro, Ollama, and OpenAI for structured data extraction
 - ✅ **Multi-Tier Validation**: Schema validation, business rules, and quality checks
 - 📊 **Normalized Data Storage**: Structured tables for high-value items (5, 6, 7, 19, 20, 21)
@@ -20,7 +20,7 @@ The FDD Pipeline is an automated system for acquiring, processing, and analyzing
 ```mermaid
 graph LR
     A[State Portals] -->|Scrape| B[Google Drive]
-    B -->|Download| C[MinerU Segmentation]
+    B -->|Download| C[MinerU Local<br/>GPU Processing]
     C -->|25 Sections| D[LLM Extraction]
     D -->|Validate| E[Supabase DB]
     E -->|API| F[Edge Functions]
@@ -38,7 +38,8 @@ graph LR
 - UV package manager
 - Supabase account
 - Google Cloud service account
-- MinerU API access
+- CUDA-capable GPU (recommended) or CPU with 16GB+ RAM
+- ~15GB disk space for MinerU models
 
 ### Installation
 
@@ -52,7 +53,14 @@ pip install uv
 
 # Create virtual environment and install dependencies
 uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip sync requirements.txt
+
+# Install MinerU with GPU support
+pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+
+# Download MinerU models (one-time setup, ~15GB)
+magic-pdf model-download
 
 # Copy environment template and configure
 cp .env.template .env
@@ -80,7 +88,10 @@ cp .env.template .env
    SUPABASE_SERVICE_KEY=your-service-key
    GDRIVE_FOLDER_ID=your-drive-folder-id
    GEMINI_API_KEY=your-gemini-key
-   MINERU_API_KEY=your-mineru-key
+   
+   # MinerU local configuration
+   MINERU_MODEL_PATH=~/.mineru/models
+   MINERU_DEVICE=cuda  # or 'cpu' if no GPU
    ```
 
 ### Running the Pipeline

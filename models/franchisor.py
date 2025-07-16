@@ -1,6 +1,6 @@
 """Franchisor models for FDD Pipeline."""
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -19,18 +19,21 @@ class FranchisorBase(BaseModel):
     address: Optional[Address] = None
     dba_names: List[str] = Field(default_factory=list)
     
-    @validator('canonical_name')
+    @field_validator('canonical_name')
+    @classmethod
     def clean_canonical_name(cls, v):
         """Normalize franchise names."""
         return v.strip().title()
     
-    @validator('website')
+    @field_validator('website')
+    @classmethod
     def validate_website(cls, v):
         if v and not v.startswith(('http://', 'https://')):
             v = f"https://{v}"
         return v
     
-    @validator('phone')
+    @field_validator('phone')
+    @classmethod
     def validate_phone(cls, v):
         if v:
             # Remove all non-digits
@@ -43,7 +46,8 @@ class FranchisorBase(BaseModel):
                 raise ValueError("Invalid phone number format")
         return v
     
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def validate_email(cls, v):
         if v and not re.match(r"[^@]+@[^@]+\.[^@]+", v):
             raise ValueError("Invalid email format")
@@ -73,5 +77,4 @@ class Franchisor(FranchisorBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

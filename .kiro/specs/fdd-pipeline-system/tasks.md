@@ -5,6 +5,7 @@ This implementation plan converts the comprehensive system design into actionabl
 ## Implementation Tasks
 
 - [x] 1. Core Infrastructure Setup
+
   - Set up project structure following `/docs/03_implementation/setup_guide.md`
   - Configure UV package management with dependencies from `TECH_STACK.md`
   - Initialize Supabase database with schema from `/docs/02_data_model/database_schema.md`
@@ -12,8 +13,10 @@ This implementation plan converts the comprehensive system design into actionabl
   - Configure environment variables and Pydantic settings validation
   - _Requirements: 1.1, 1.7, 6.6, 10.1, 10.2, 10.6_
 
-- [ ] 2. Database Schema and Models Implementation
+- [x] 2. Database Schema and Models Implementation
+
   - [x] 2.1 Create database migration files
+
     - Implement PostgreSQL schema from `/docs/02_data_model/database_schema.md`
     - Create all core tables: `franchisors`, `fdds`, `fdd_sections`, `scrape_metadata`
     - Add structured data tables: `item5_initial_fees`, `item6_other_fees`, `item7_initial_investment`, `item19_fpr`, `item20_outlet_summary`, `item20_state_counts`, `item21_financials`
@@ -21,7 +24,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - Add indexes, constraints, and RLS policies per schema documentation
     - _Requirements: 6.1, 6.2, 8.6_
 
-  - [-] 2.2 Implement Pydantic models
+  - [x] 2.2 Implement Pydantic models
     - Create all Pydantic models from `/docs/02_data_model/pydantic_models.md`
     - Implement core models: `Franchisor`, `FDD`, `FDDSection` with full validation
     - Create structured data models for Items 5, 6, 7, 19, 20, 21 with business rule validation
@@ -30,8 +33,10 @@ This implementation plan converts the comprehensive system design into actionabl
     - Write unit tests for all model validation logic
     - _Requirements: 3.1, 3.2, 3.8, 10.4_
 
-- [ ] 3. Web Scraping Infrastructure
-  - [ ] 3.1 Create base scraper framework
+- [-] 3. Web Scraping Infrastructure
+
+  - [-] 3.1 Create base scraper framework
+
     - Implement `BaseScraper` class with common functionality
     - Add Playwright browser management with cleanup handlers
     - Create retry logic with exponential backoff (3 attempts)
@@ -41,6 +46,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 1.1, 1.6, 5.2_
 
   - [ ] 3.2 Implement Minnesota portal scraper
+
     - Create `MinnesotaScraper` inheriting from `BaseScraper`
     - Implement navigation to Minnesota commerce department FDD search
     - Add document discovery and metadata extraction logic
@@ -59,7 +65,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
 - [ ] 4. Document Storage and Management
+
   - [ ] 4.1 Implement Google Drive integration
+
     - Create `DriveManager` class with service account authentication
     - Implement folder structure creation per `/docs/01_architecture/system_overview.md`
     - Add resumable upload functionality for large PDFs
@@ -80,7 +88,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 6.1, 6.3, 6.4, 6.5_
 
 - [ ] 5. Document Processing Pipeline
+
   - [ ] 5.1 Implement MinerU integration
+
     - Create `MinerUClient` with API authentication and rate limiting
     - Implement document upload and processing status polling
     - Add layout JSON parsing and section identification logic
@@ -101,7 +111,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 2.3, 2.4, 2.5_
 
 - [ ] 6. LLM Extraction Engine
+
   - [ ] 6.1 Create multi-model LLM framework
+
     - Implement `LLMExtractor` base class with model selection logic
     - Create adapters for Gemini Pro, Ollama, and OpenAI APIs
     - Add model routing based on section complexity per `technology_decisions.md`
@@ -112,6 +124,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 2.6, 2.7, 9.6_
 
   - [ ] 6.2 Implement prompt template system
+
     - Create YAML prompt templates for each FDD section (Items 0-24)
     - Implement Jinja2 template rendering with variable injection
     - Add section-specific extraction instructions and examples
@@ -132,7 +145,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 2.8, 3.1_
 
 - [ ] 7. Data Validation System
+
   - [ ] 7.1 Implement schema validation layer
+
     - Create automatic Pydantic validation for all extracted data
     - Implement custom validators for business-specific rules
     - Add validation error collection and detailed reporting
@@ -143,6 +158,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
   - [ ] 7.2 Create business rules validation
+
     - Implement cross-field validation for Items 5, 6, 7 fee consistency
     - Add outlet math validation for Item 20 (count balancing)
     - Create financial equation validation for Item 21 (accounting balance)
@@ -163,7 +179,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 3.8, 3.9_
 
 - [ ] 8. Franchise Entity Management
+
   - [ ] 8.1 Implement franchise matching system
+
     - Create exact name matching against existing franchisors
     - Implement semantic embedding generation using sentence-transformers
     - Add similarity search with configurable thresholds (0.85, 0.94)
@@ -184,7 +202,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 4.7_
 
 - [ ] 9. Workflow Orchestration
+
   - [ ] 9.1 Create Prefect workflow infrastructure
+
     - Implement base flow and task decorators
     - Create workflow configuration and parameter management
     - Add dynamic task mapping for parallel processing
@@ -195,6 +215,7 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 5.1, 5.2_
 
   - [ ] 9.2 Implement state-specific scraping flows
+
     - Create Minnesota scraping workflow with weekly scheduling
     - Implement Wisconsin scraping workflow with error handling
     - Add scraping result processing and database updates
@@ -215,7 +236,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 5.5, 5.6, 5.7, 5.8_
 
 - [ ] 10. API Layer Implementation
+
   - [ ] 10.1 Create internal FastAPI services
+
     - Implement FastAPI application with automatic OpenAPI documentation
     - Create CRUD endpoints for all major entities
     - Add query endpoints with filtering, pagination, and sorting
@@ -236,7 +259,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 7.2, 7.3, 7.5, 7.7_
 
 - [ ] 11. Security and Compliance
+
   - [ ] 11.1 Implement security measures
+
     - Configure HTTPS/TLS for all external communications
     - Implement service account security with minimal permissions
     - Add API key management and rotation procedures
@@ -257,7 +282,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 8.5, 8.6, 8.7_
 
 - [ ] 12. Monitoring and Operations
+
   - [ ] 12.1 Implement comprehensive monitoring
+
     - Create structured logging with context preservation
     - Implement metrics collection for all system components
     - Add performance monitoring and alerting
@@ -278,7 +305,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 10.5, 10.7_
 
 - [ ] 13. Testing and Quality Assurance
+
   - [ ] 13.1 Create comprehensive test suite
+
     - Implement unit tests for all components with >90% coverage
     - Create integration tests for end-to-end workflows
     - Add performance tests for scalability validation
@@ -299,7 +328,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 10.3, 10.8_
 
 - [ ] 14. Performance Optimization
+
   - [ ] 14.1 Implement scalability features
+
     - Add parallel processing capabilities for high document volumes
     - Implement async operations with connection pooling
     - Create database query optimization and indexing
@@ -320,7 +351,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 9.4, 9.5, 9.6_
 
 - [ ] 15. Documentation and Training
+
   - [ ] 15.1 Create user documentation
+
     - Write comprehensive API documentation with examples
     - Create user guides and tutorials
     - Add troubleshooting guides and FAQ
@@ -341,7 +374,9 @@ This implementation plan converts the comprehensive system design into actionabl
     - _Requirements: 10.1, 10.7_
 
 - [ ] 16. System Integration and Deployment
+
   - [ ] 16.1 Create deployment infrastructure
+
     - Implement production deployment procedures
     - Create staging and testing environments
     - Add CI/CD pipeline configuration

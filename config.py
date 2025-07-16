@@ -19,11 +19,18 @@ class Settings(BaseSettings):
     gdrive_creds_json: str = Field(..., description="Path to Google service account JSON")
     gdrive_folder_id: str = Field(..., description="Google Drive folder ID for FDD storage")
     
-    # MinerU API Configuration
-    mineru_api_key: str = Field(..., description="MinerU API key")
-    mineru_base_url: str = Field(
-        default="https://api.mineru.com/v1",
-        description="MinerU API base URL"
+    # MinerU Local Configuration
+    mineru_model_path: str = Field(
+        default="~/.mineru/models",
+        description="Path to MinerU model files"
+    )
+    mineru_device: str = Field(
+        default="cuda",
+        description="Device for MinerU processing (cuda or cpu)"
+    )
+    mineru_batch_size: int = Field(
+        default=2,
+        description="Batch size for MinerU processing"
     )
     
     # LLM Provider Configuration
@@ -108,6 +115,20 @@ class Settings(BaseSettings):
         if v.upper() not in valid_levels:
             raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
         return v.upper()
+    
+    @field_validator("mineru_model_path")
+    @classmethod
+    def expand_mineru_path(cls, v: str) -> str:
+        """Expand user path for MinerU models."""
+        return os.path.expanduser(v)
+    
+    @field_validator("mineru_device")
+    @classmethod
+    def validate_device(cls, v: str) -> str:
+        """Validate MinerU device selection."""
+        if v not in {"cuda", "cpu"}:
+            raise ValueError("mineru_device must be 'cuda' or 'cpu'")
+        return v
 
 
 # Global settings instance

@@ -19,7 +19,7 @@ This is the FDD (Franchise Disclosure Document) Pipeline - a Python-based docume
 - **Python 3.11+** with UV package manager
 - **Prefect** - Workflow orchestration
 - **Playwright** - Web scraping automation
-- **MinerU** - PDF parsing and extraction
+- **MinerU** - Local PDF parsing and extraction (GPU-accelerated)
 - **Instructor** - Structured LLM outputs
 - **LLMs**: Gemini Pro (primary), Ollama (local), OpenAI (fallback)
 - **Supabase** - PostgreSQL database
@@ -34,7 +34,7 @@ The pipeline follows a distributed, event-driven architecture:
 ```
 State Portals → Scrapers → Queue → Processing → Validation → Storage
                    ↓                    ↓            ↓           ↓
-              [Playwright]         [MinerU+LLMs]  [Validators] [Supabase/GDrive]
+              [Playwright]    [MinerU(local)+LLMs] [Validators] [Supabase/GDrive]
 ```
 
 ### Core Components
@@ -45,7 +45,7 @@ State Portals → Scrapers → Queue → Processing → Validation → Storage
    - Implements retry logic and rate limiting
 
 2. **Processing Layer** (`processors/`)
-   - PDF parsing with MinerU
+   - PDF parsing with MinerU (local GPU-accelerated installation)
    - LLM extraction using Instructor
    - Multi-model fallback strategy
 
@@ -69,6 +69,11 @@ uv pip install -e ".[dev]"
 
 # Install Playwright browsers
 playwright install chromium
+
+# Install MinerU locally
+pip install magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+# Download models (run once, ~15GB)
+magic-pdf model-download
 
 # Run tests
 pytest tests/ -v
@@ -138,6 +143,10 @@ PREFECT_API_KEY=
 # Scraping
 PROXY_URL=  # Optional
 USER_AGENT=  # Optional
+
+# MinerU Local
+MINERU_MODEL_PATH=~/.mineru/models  # Path to downloaded models
+MINERU_DEVICE=cuda  # cuda or cpu
 ```
 
 ## Code Standards
@@ -171,5 +180,7 @@ USER_AGENT=  # Optional
 1. **Playwright timeout**: Increase `timeout` in scraper config or check proxy
 2. **LLM extraction fails**: Check model availability, API limits, or schema complexity
 3. **Storage upload fails**: Verify credentials and quota limits
-4. **Memory issues with large PDFs**: Use streaming mode in MinerU
+4. **Memory issues with large PDFs**: Reduce batch size or use CPU mode for MinerU
 5. **Duplicate documents**: Check idempotency keys in database
+6. **MinerU GPU errors**: Ensure CUDA is properly installed, fallback to CPU mode
+7. **MinerU model download fails**: Check disk space (~15GB required) and network connection

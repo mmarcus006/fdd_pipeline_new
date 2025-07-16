@@ -1,6 +1,6 @@
 """Item 7 - Initial Investment models."""
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List
 from uuid import UUID
 
@@ -16,11 +16,11 @@ class InitialInvestmentBase(BaseModel):
     to_whom: Optional[str] = None
     remarks: Optional[str] = None
     
-    @root_validator
-    def validate_range(cls, values):
+    @model_validator(mode='after')
+    def validate_range(self):
         """Ensure high >= low and at least one is set."""
-        low = values.get('low_cents')
-        high = values.get('high_cents')
+        low = self.low_cents
+        high = self.high_cents
         
         if low is None and high is None:
             raise ValueError("At least one of low_cents or high_cents must be set")
@@ -28,9 +28,10 @@ class InitialInvestmentBase(BaseModel):
         if low is not None and high is not None and high < low:
             raise ValueError("high_cents must be >= low_cents")
         
-        return values
+        return self
     
-    @validator('category')
+    @field_validator('category')
+    @classmethod
     def standardize_category(cls, v):
         """Standardize common category names."""
         category_map = {
@@ -48,8 +49,7 @@ class InitialInvestment(InitialInvestmentBase):
     """Initial investment with section reference."""
     section_id: UUID
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class InitialInvestmentSummary(BaseModel):
@@ -60,7 +60,8 @@ class InitialInvestmentSummary(BaseModel):
     total_high_cents: int
     items: List[InitialInvestment]
     
-    @validator('total_low_cents', 'total_high_cents')
+    @field_validator('total_low_cents', 'total_high_cents')
+    @classmethod
     def validate_totals(cls, v):
         """Ensure totals are reasonable."""
         if v > ValidationConfig.MAX_INVESTMENT_AMOUNT:
