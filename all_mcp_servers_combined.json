@@ -1,0 +1,160 @@
+{
+  "mcpServers": {
+    "Context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ],
+      "description": "Context7 MCP server for documentation and context retrieval"
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "description": "Fetch MCP server for HTTP requests"
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_59d37467719a0622e3b8fa728d24db9edefb774a"
+      },
+      "description": "Supabase MCP server for database operations"
+    },
+    "supabase-with-token": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "sbp_faa311374bcbee59d36586d65ee1e120cd549830"
+      ],
+      "description": "Alternative Supabase configuration with inline token"
+    },
+    "openmemory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "openmemory"
+      ],
+      "env": {
+        "OPENMEMORY_API_KEY": "m0-j4eZhdLT4DpYisWUOn2RvOj7Qglk4s6a6mPFR1LA",
+        "CLIENT_NAME": "claude"
+      },
+      "description": "OpenMemory MCP server for memory persistence"
+    },
+    "openmemory-cursor": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "openmemory"
+      ],
+      "env": {
+        "OPENMEMORY_API_KEY": "om-acnkuzsk47evawqfcvsbgoj69sx5upac",
+        "CLIENT_NAME": "cursor"
+      },
+      "description": "OpenMemory MCP server configured for Cursor"
+    },
+    "JinaAI": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "jina-ai-mcp-server"
+      ],
+      "env": {
+        "JINA_API_KEY": "jina_8be4743e720a49daa828cbc9dd8c6469Wo1IIgFL1FNp7ExVx6kvaQn_L6z0"
+      },
+      "description": "Jina AI MCP server for AI-powered search and analysis"
+    },
+    "Exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "a4092f6e-8db1-4907-b984-fb5c94bc6e7c"
+      },
+      "description": "Exa MCP server for advanced search capabilities"
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "description": "Puppeteer MCP server for browser automation"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "description": "Playwright MCP server for cross-browser automation"
+    },
+    "markdownify": {
+      "command": "node",
+      "args": [
+        "C:\\projects\\markdownify-mcp\\dist\\index.js"
+      ],
+      "env": {
+        "UV_PATH": "C:\\Users\\Miller\\.local\\bin\\uv.exe"
+      },
+      "description": "Markdownify MCP server for markdown processing"
+    },
+    "mcp-doc-scraper": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@askjohngeorge/mcp-doc-scraper",
+        "--key",
+        "96498515-e272-4d08-885c-5b9ef609a1ca"
+      ],
+      "description": "MCP documentation scraper via Smithery"
+    },
+    "airtable": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "airtable-mcp-server"
+      ],
+      "env": {
+        "AIRTABLE_API_KEY": "pat5uKJmqSrfz6dPM.feccfefb3f4e9cbb7dc3d88a597b183bbccf34b72375d3649f08cefc378b8ab5"
+      },
+      "description": "Airtable MCP server for database operations"
+    },
+    "Baserow": {
+      "url": "https://api.baserow.io/mcp/0UTGu0UqSldoun2pHzEXO7CdZLyfqyDF/sse",
+      "description": "Baserow MCP server via SSE connection"
+    },
+    "firecrawl": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "firecrawl-mcp"
+      ],
+      "env": {
+        "FIRECRAWL_API_KEY": "fc-71fe55b5a8544a4abee21a27f98d160f"
+      },
+      "description": "Firecrawl MCP server for web scraping"
+    }
+  },
+  "metadata": {
+    "generated": "2025-07-16T00:28:32Z",
+    "source": "Combined from Claude Desktop, Claude Code, Gemini CLI, and Cursor configurations",
+    "notes": {
+      "platform_compatibility": "Some servers may require platform-specific adjustments (e.g., 'cmd /c' prefix on Windows)",
+      "api_keys": "API keys and tokens included are from existing configurations - please verify and update as needed",
+      "duplicate_servers": "Some servers appear with different configurations (e.g., supabase, openmemory) - both versions included"
+    }
+  }
+}
