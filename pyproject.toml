@@ -25,7 +25,13 @@ classifiers = [
 
 dependencies = [
     # Workflow orchestration
-    "prefect>=2.14.0",
+    "prefect",
+    "PyPDF2",
+    "click",
+    "tqdm",
+
+
+
     
     # Web scraping & automation
     "playwright>=1.40.0",
@@ -47,10 +53,11 @@ dependencies = [
     
     # AI/ML stack
     "instructor>=1.2.0",
-    "google-generativeai>=0.3.0",
+    "google-genai",
     "openai>=1.6.0",
     "ollama>=0.1.0",
     "sentence-transformers>=2.2.0",
+    "mistralai",
     
     # Document processing
     "pypdf2>=3.0.0",

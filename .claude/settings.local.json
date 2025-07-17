@@ -8,7 +8,17 @@
       "Bash(python:*)",
       "WebFetch(domain:github.com)",
       "Bash(ls:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(dir .venvScriptsactivate.bat)",
+      "Bash(curl:*)",
+      "Bash(pip install:*)",
+      "Bash(uv venv:*)",
+      "Bash(.venv\\\\Scripts\\\\python.exe:*)",
+      "Bash(grep:*)",
+      "Bash(source:*)",
+      "Bash(pip3 install:*)",
+      "Bash(uv pip install:*)",
+      "Bash(make:*)"
     ],
     "deny": []
   },

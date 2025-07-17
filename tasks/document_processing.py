@@ -298,15 +298,38 @@ class MinerUClient:
         self, pdf_path: Path, timeout_seconds: int
     ) -> DocumentLayout:
         """Process document locally using MinerU installation."""
-        # Create temporary output directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir) / "output"
-            output_dir.mkdir(exist_ok=True)
+        # Check if MinerU has already processed this file
+        pdf_stem = pdf_path.stem
+        parent_dir = pdf_path.parent
+        
+        # Look for existing MinerU output directory
+        existing_outputs = list(parent_dir.glob(f"{pdf_stem}*"))
+        mineru_output_dir = None
+        
+        for output_dir in existing_outputs:
+            if output_dir.is_dir() and output_dir.name.startswith(pdf_stem):
+                # Check if it contains MinerU output files
+                if (output_dir / "full.md").exists() or (output_dir / "layout.json").exists():
+                    mineru_output_dir = output_dir
+                    self.logger.info(
+                        "Found existing MinerU output",
+                        output_dir=str(mineru_output_dir),
+                    )
+                    break
+        
+        if mineru_output_dir:
+            # Use existing MinerU output
+            return await self._load_existing_mineru_output(mineru_output_dir)
+        else:
+            # Create temporary output directory
+            with tempfile.TemporaryDirectory() as temp_dir:
+                output_dir = Path(temp_dir) / "output"
+                output_dir.mkdir(exist_ok=True)
 
-            # Run local MinerU analysis
-            return await self._run_mineru_analysis(
-                pdf_path, output_dir, timeout_seconds
-            )
+                # Run local MinerU analysis
+                return await self._run_mineru_analysis(
+                    pdf_path, output_dir, timeout_seconds
+                )
 
     async def _run_mineru_analysis(
         self, pdf_path: Path, output_dir: Path, timeout_seconds: int
@@ -453,6 +476,97 @@ class MinerUClient:
                 return len(pdf_reader.pages)
         except Exception:
             return 1  # Default to 1 page if can't read
+
+    async def _load_existing_mineru_output(
+        self, output_dir: Path
+    ) -> DocumentLayout:
+        """Load existing MinerU output from directory."""
+        try:
+            self.logger.info(
+                "Loading existing MinerU output",
+                output_dir=str(output_dir),
+            )
+
+            # Load markdown content if available
+            md_path = output_dir / "full.md"
+            md_content = ""
+            if md_path.exists():
+                with open(md_path, "r", encoding="utf-8") as f:
+                    md_content = f.read()
+                    self.logger.info(
+                        "Loaded markdown content",
+                        size_chars=len(md_content),
+                    )
+
+            # Load layout.json if available
+            layout_path = output_dir / "layout.json"
+            layout_data = {}
+            if layout_path.exists():
+                with open(layout_path, "r", encoding="utf-8") as f:
+                    layout_data = json.load(f)
+                    self.logger.info(
+                        "Loaded layout data",
+                        total_pages=layout_data.get("total_pages", "Unknown"),
+                    )
+
+            # Load content_list.json if available
+            content_list_files = list(output_dir.glob("*_content_list.json"))
+            content_elements = []
+            if content_list_files:
+                with open(content_list_files[0], "r", encoding="utf-8") as f:
+                    content_list = json.load(f)
+                    content_elements = content_list
+                    self.logger.info(
+                        "Loaded content list",
+                        total_elements=len(content_elements),
+                    )
+
+            # Convert content list to layout elements
+            layout_elements = []
+            for idx, element in enumerate(content_elements):
+                if element.get("type") == "text" and element.get("text"):
+                    layout_elements.append(
+                        LayoutElement(
+                            type="text",
+                            bbox=[0, 0, 612, 792],  # Standard page size
+                            page=element.get("page_idx", 0),
+                            text=element.get("text", ""),
+                            confidence=0.9,
+                        )
+                    )
+                elif element.get("type") == "table":
+                    layout_elements.append(
+                        LayoutElement(
+                            type="table",
+                            bbox=[0, 0, 612, 792],
+                            page=element.get("page_idx", 0),
+                            text=str(element.get("table_caption", [])),
+                            confidence=0.85,
+                        )
+                    )
+
+            # Get total pages from layout.json or estimate from content
+            total_pages = layout_data.get("total_pages", 1)
+            if not total_pages and content_elements:
+                max_page = max(
+                    (elem.get("page_idx", 0) for elem in content_elements), default=0
+                )
+                total_pages = max_page + 1
+
+            return DocumentLayout(
+                total_pages=total_pages,
+                elements=layout_elements,
+                processing_time=0.0,
+                model_version="mineru-existing",
+            )
+
+        except Exception as e:
+            self.logger.error(
+                "Failed to load existing MinerU output",
+                error=str(e),
+                output_dir=str(output_dir),
+            )
+            raise
 
     async def fallback_to_pypdf2(self, pdf_path: Path) -> DocumentLayout:
         """
