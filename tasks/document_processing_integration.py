@@ -65,9 +65,10 @@ async def extract_section_content(
             }
 
         # Create FDDSection object for the extractor
+        from uuid import uuid4
         fdd_section = FDDSection(
-            id=UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder
-            fdd_id=UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder
+            id=uuid4(),  # Generate unique ID
+            fdd_id=fdd_id,  # Use the actual FDD ID passed to the function
             item_no=section.item_no,
             item_name=section.item_name,
             start_page=section.start_page,
@@ -251,9 +252,12 @@ async def extract_fdd_sections_batch(
         # Create FDD model
         from models.fdd import FDD
 
+        # Get franchise_id from database or create a new one
+        franchise_id = uuid4()  # In production, this should come from the actual franchise record
+        
         fdd = FDD(
             id=fdd_id,
-            franchise_id=UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder
+            franchise_id=franchise_id,
             issue_date=datetime.utcnow().date(),
             document_type="Initial",
             filing_state="WI",
@@ -269,7 +273,7 @@ async def extract_fdd_sections_batch(
             if section.item_no in content_by_section:
                 fdd_sections.append(
                     FDDSection(
-                        id=UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder
+                        id=uuid4(),  # Generate unique ID
                         fdd_id=fdd_id,
                         item_no=section.item_no,
                         item_name=section.item_name,

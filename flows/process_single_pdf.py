@@ -140,18 +140,60 @@ async def process_single_fdd_flow(pdf_path: str):
         print("All sections saved to database")
         logger.info("Database operations completed successfully")
         
-        # Step 3: Update FDD processing status to completed
-        print("Updating FDD status to completed...")
+        # Step 3: Extract data from sections using LLM
+        print("Starting LLM extraction for sections...")
+        from tasks.llm_extraction import extract_fdd_sections_batch
+        from tasks.data_storage import store_extraction_results
+        
+        # Filter sections for extraction (items 5, 6, 7, 19, 20, 21)
+        extractable_items = ["5", "6", "7", "19", "20", "21"]
+        sections_to_extract = [
+            s for s in sections 
+            if str(s.item_no) in extractable_items
+        ]
+        
+        if sections_to_extract:
+            logger.info(f"Extracting {len(sections_to_extract)} sections: {[s.item_no for s in sections_to_extract]}")
+            
+            # Extract sections
+            extraction_results = await extract_fdd_sections_batch.fn(
+                fdd_id=fdd_id,
+                pdf_path=str(pdf_file),
+                sections=sections_to_extract
+            )
+            
+            logger.info(f"Extraction completed. Results: {list(extraction_results.keys())}")
+            
+            # Step 4: Store extraction results in database
+            print("Storing extraction results...")
+            storage_results = await store_extraction_results.fn(
+                fdd_id=fdd_id,
+                extraction_results=extraction_results,
+                prefect_run_id=None  # Could pass flow run ID here
+            )
+            
+            logger.info(f"Storage completed: {storage_results['success_count']} stored, {storage_results['failure_count']} failed")
+            
+            # Update FDD processing status based on results
+            if storage_results['success']:
+                processing_status = ProcessingStatus.COMPLETED
+            else:
+                processing_status = ProcessingStatus.PARTIALLY_COMPLETED
+        else:
+            logger.warning("No extractable sections found")
+            processing_status = ProcessingStatus.COMPLETED
+        
+        # Step 5: Update FDD processing status
+        print(f"Updating FDD status to {processing_status.value}...")
         fdd_update = {
-            'processing_status': ProcessingStatus.COMPLETED.value,
+            'processing_status': processing_status.value,
             'updated_at': datetime.utcnow().isoformat()
         }
         await db_manager.update_record('fdds', str(fdd_id), fdd_update)
-        print("FDD status updated to completed")
+        print(f"FDD status updated to {processing_status.value}")
 
-        # The following steps would be called here, but are not yet implemented:
-        # Step 4: Validate and store the extracted data
-        # validation_results = await validate_and_store_data.fn(extracted_data)
+        # TODO: Step 6: Run validation on extracted data
+        # validation_results = await validate_fdd_sections.fn(fdd_id)
 
         logger.info("Single FDD processing flow completed.")
 

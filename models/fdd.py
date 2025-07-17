@@ -17,6 +17,7 @@ class ProcessingStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
     FAILED = "failed"
 
 

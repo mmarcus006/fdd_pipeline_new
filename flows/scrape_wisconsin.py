@@ -214,22 +214,136 @@ async def download_wisconsin_documents(
                     # Compute hash for deduplication
                     doc_hash = scraper.compute_document_hash(content)
 
-                    # TODO: Check for duplicates in database
-                    # TODO: Upload to Google Drive
-                    # TODO: Update FDD record with file path and hash
+                    # Get database manager
+                    async with get_database_manager() as db_manager:
+                        # Check for duplicates in database
+                        existing_fdd = await db_manager.get_records_by_filter(
+                            "fdds",
+                            {"sha256_hash": doc_hash}
+                        )
+                        
+                        if existing_fdd:
+                            logger.info(f"Document already exists in database (hash: {doc_hash[:16]})")
+                            # Update scrape metadata to point to existing FDD
+                            await db_manager.update_record(
+                                "scrape_metadata",
+                                str(metadata.id),
+                                {
+                                    "fdd_id": str(existing_fdd[0]["id"]),
+                                    "scrape_status": "skipped",
+                                    "failure_reason": "Duplicate document"
+                                }
+                            )
+                            continue
 
-                    # For now, just log the successful download
+                        # Create franchisor record if needed
+                        from models.franchisor import Franchisor
+                        from models.fdd import FDD, ProcessingStatus
+                        from utils.database import serialize_for_db
+                        
+                        # Check if franchisor exists
+                        existing_franchisor = await db_manager.get_records_by_filter(
+                            "franchisors",
+                            {"canonical_name": franchise_name}
+                        )
+                        
+                        if existing_franchisor:
+                            franchisor_id = existing_franchisor[0]["id"]
+                        else:
+                            # Create new franchisor
+                            franchisor = Franchisor(
+                                id=uuid4(),
+                                canonical_name=franchise_name,
+                                created_at=datetime.utcnow(),
+                                updated_at=datetime.utcnow()
+                            )
+                            franchisor_dict = serialize_for_db(franchisor.model_dump())
+                            await db_manager.batch.batch_upsert(
+                                'franchisors', 
+                                [franchisor_dict], 
+                                conflict_columns=['canonical_name']
+                            )
+                            franchisor_id = str(franchisor.id)
+
+                        # Create FDD record
+                        fdd = FDD(
+                            id=metadata.fdd_id,  # Use the placeholder FDD ID from metadata
+                            franchise_id=UUID(franchisor_id),
+                            source_name="WI",
+                            processing_status=ProcessingStatus.PENDING,
+                            issue_date=metadata.filing_metadata.get("filing_date", datetime.utcnow().date()),
+                            document_type=metadata.filing_metadata.get("document_type", "Initial"),
+                            filing_state="WI",
+                            drive_path="",  # Will be updated after upload
+                            drive_file_id="",  # Will be updated after upload
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        fdd_dict = serialize_for_db(fdd.model_dump())
+                        await db_manager.batch.batch_upsert('fdds', [fdd_dict])
+
+                    # Upload to Google Drive
+                    from tasks.drive_operations import get_drive_manager
+                    drive_manager = get_drive_manager()
+                    
+                    # Create state-specific folder structure
+                    root_folder_id = drive_manager.settings.gdrive_folder_id
+                    state_folder_id = drive_manager.get_or_create_folder(
+                        "Wisconsin FDDs",
+                        parent_id=root_folder_id
+                    )
+                    
+                    # Clean franchise name for filename
+                    clean_name = franchise_name.replace("/", "_").replace("\\", "_")
+                    file_name = f"{clean_name}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+                    
+                    # Upload file
+                    uploaded_file_id = drive_manager.upload_file(
+                        file_content=content,
+                        filename=file_name,
+                        parent_id=state_folder_id,
+                        mime_type="application/pdf"
+                    )
+                    
+                    # Get file metadata
+                    file_metadata = drive_manager.get_file_metadata(uploaded_file_id)
+                    
+                    # Update FDD record with file path and hash
+                    async with get_database_manager() as db_manager:
+                        update_data = serialize_for_db({
+                            "drive_path": f"Wisconsin FDDs/{file_name}",
+                            "drive_file_id": uploaded_file_id,
+                            "sha256_hash": doc_hash,
+                            "total_pages": None,  # Will be set during processing
+                            "processing_status": "pending",
+                            "updated_at": datetime.utcnow()
+                        })
+                        await db_manager.update_record(
+                            "fdds",
+                            str(fdd.id),
+                            update_data
+                        )
+                        
+                        # Update scrape metadata with successful status
+                        await db_manager.update_record(
+                            "scrape_metadata",
+                            str(metadata.id),
+                            {
+                                "scrape_status": "completed",
+                                "fdd_id": str(fdd.id)
+                            }
+                        )
+
                     pipeline_logger.info(
                         "wisconsin_document_downloaded",
                         franchise_name=franchise_name,
                         file_size=len(content),
-                        sha256_hash=doc_hash[:16],  # Log first 16 chars
+                        sha256_hash=doc_hash[:16],
                         metadata_id=str(metadata.id),
+                        drive_file_id=uploaded_file_id
                     )
 
-                    downloaded_files.append(
-                        f"wi/{franchise_name.lower().replace(' ', '_')}.pdf"
-                    )
+                    downloaded_files.append(f"Wisconsin FDDs/{file_name}")
 
                     # Add delay between downloads to be respectful
                     await asyncio.sleep(2.0)

@@ -94,7 +94,7 @@ async def health_check():
     # Check database connection
     try:
         db = DatabaseManager()
-        if db.health_check():
+        if db.health_check.check_connection():
             dependencies["database"] = "connected"
         else:
             dependencies["database"] = "error"
@@ -271,7 +271,7 @@ async def upload_fdd(
         )
     
     # Validate file type
-    if not document.filename.lower().endswith('.pdf'):
+    if not document.filename or not document.filename.lower().endswith('.pdf'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are accepted"
@@ -294,18 +294,20 @@ async def upload_fdd(
         import uuid
         fdd_id = str(uuid.uuid4())
         
-        # Upload to Google Drive
-        from tasks.drive_operations import upload_to_drive
+        # Get DriveManager
+        from tasks.drive_operations import get_drive_manager
+        drive_manager = get_drive_manager()
         
         # Create filename
         safe_franchise_name = franchise_name.replace(" ", "_").replace("/", "_")
         filename = f"{safe_franchise_name}_{issue_date}_{filing_state}.pdf"
         
         # Upload
-        drive_file_id = await upload_to_drive(
-            content=contents,
+        drive_file_id, _ = await drive_manager.upload_file_with_metadata_sync(
+            file_content=contents,
             filename=filename,
-            folder_path=f"manual_uploads/{filing_state}"
+            folder_path=f"manual_uploads/{filing_state}",
+            fdd_id=uuid.UUID(fdd_id)
         )
         
         # Store metadata in database
@@ -314,15 +316,14 @@ async def upload_fdd(
         # First, find or create franchisor
         franchisor_data = {
             "canonical_name": franchise_name,
-            "created_at": datetime.utcnow()
         }
         
-        franchisor = db.create("franchisors", franchisor_data)
+        franchisor = db.upsert_record("franchisors", franchisor_data, conflict_columns=["canonical_name"])
         
         # Create FDD record
         fdd_data = {
             "id": fdd_id,
-            "franchise_id": franchisor["id"],
+            "franchisor_id": franchisor["id"],
             "issue_date": issue_date_obj,
             "document_type": "Initial",
             "filing_state": filing_state.upper(),
@@ -332,7 +333,7 @@ async def upload_fdd(
             "created_at": datetime.utcnow()
         }
         
-        db.create("fdds", fdd_data)
+        db.execute_batch_insert("fdds", [fdd_data])
         
         logger.info(f"Uploaded FDD {fdd_id} for {franchise_name}")
         

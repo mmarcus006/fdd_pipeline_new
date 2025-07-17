@@ -62,8 +62,8 @@ dependencies = [
     # Document processing
     "pypdf2>=3.0.0",
     # Note: magic-pdf installation is complex, install separately if needed
-    # "magic-pdf[full]>=0.7.0",  # MinerU local with GPU support
-    # "torch>=2.0.0",  # Required for MinerU GPU processing
+    "magic-pdf[full]>=0.7.0",  # MinerU local with GPU support
+    "torch>=2.0.0",  # Required for MinerU GPU processing
     
     # API framework
     "fastapi>=0.104.0",

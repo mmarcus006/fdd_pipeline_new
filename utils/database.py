@@ -23,6 +23,34 @@ logger = get_logger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+def serialize_for_db(data: dict) -> dict:
+    """Convert UUID and datetime objects to strings for JSON serialization.
+    
+    Args:
+        data: Dictionary containing data to serialize
+        
+    Returns:
+        Dictionary with serialized values
+    """
+    serialized = {}
+    for key, value in data.items():
+        if isinstance(value, UUID):
+            serialized[key] = str(value)
+        elif isinstance(value, datetime):
+            serialized[key] = value.isoformat()
+        elif isinstance(value, dict):
+            serialized[key] = serialize_for_db(value)
+        elif isinstance(value, list):
+            serialized[key] = [
+                serialize_for_db(item) if isinstance(item, dict) else 
+                str(item) if isinstance(item, (UUID, datetime)) else item 
+                for item in value
+            ]
+        else:
+            serialized[key] = value
+    return serialized
+
+
 class DatabaseHealthCheck:
     """Database health monitoring utilities."""
 

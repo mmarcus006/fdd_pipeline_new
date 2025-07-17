@@ -17,7 +17,7 @@ from utils.logging import PipelineLogger
 
 @task(name="scrape_minnesota_portal", retries=3, retry_delay_seconds=60)
 async def scrape_minnesota_portal(prefect_run_id: UUID) -> List[DocumentMetadata]:
-    """Scrape the Minnesota franchise portal for FDD documents.
+    """Scrape the Minnesota CARDS portal for FDD documents.
 
     Args:
         prefect_run_id: Prefect run ID for tracking
@@ -34,7 +34,7 @@ async def scrape_minnesota_portal(prefect_run_id: UUID) -> List[DocumentMetadata
     )
 
     try:
-        logger.info("Starting Minnesota portal scraping")
+        logger.info("Starting Minnesota CARDS portal scraping")
         pipeline_logger.info("minnesota_scraping_started", run_id=str(prefect_run_id))
 
         # Create and run scraper
@@ -214,22 +214,133 @@ async def download_minnesota_documents(
                     # Compute hash for deduplication
                     doc_hash = scraper.compute_document_hash(content)
 
-                    # TODO: Check for duplicates in database
-                    # TODO: Upload to Google Drive
-                    # TODO: Update FDD record with file path and hash
+                    # Get database manager
+                    async with get_database_manager() as db_manager:
+                        # Check for duplicates in database
+                        existing_fdd = await db_manager.get_records_by_filter(
+                            "fdds",
+                            {"sha256_hash": doc_hash}
+                        )
+                        
+                        if existing_fdd:
+                            logger.info(f"Document already exists in database (hash: {doc_hash[:16]})")
+                            # Update scrape metadata to point to existing FDD
+                            await db_manager.update_record(
+                                "scrape_metadata",
+                                str(metadata.id),
+                                {
+                                    "fdd_id": str(existing_fdd[0]["id"]),
+                                    "scrape_status": "skipped",
+                                    "failure_reason": "Duplicate document"
+                                }
+                            )
+                            continue
 
-                    # For now, just log the successful download
+                        # Create franchisor record if needed
+                        from models.franchisor import Franchisor
+                        from models.fdd import FDD, ProcessingStatus
+                        from utils.database import serialize_for_db
+                        
+                        # Check if franchisor exists
+                        existing_franchisor = await db_manager.get_records_by_filter(
+                            "franchisors",
+                            {"canonical_name": franchise_name}
+                        )
+                        
+                        if existing_franchisor:
+                            franchisor_id = existing_franchisor[0]["id"]
+                        else:
+                            # Create new franchisor
+                            franchisor = Franchisor(
+                                id=uuid4(),
+                                canonical_name=franchise_name,
+                                created_at=datetime.utcnow(),
+                                updated_at=datetime.utcnow()
+                            )
+                            franchisor_dict = serialize_for_db(franchisor.model_dump())
+                            await db_manager.batch.batch_upsert(
+                                'franchisors', 
+                                [franchisor_dict], 
+                                conflict_columns=['canonical_name']
+                            )
+                            franchisor_id = str(franchisor.id)
+
+                        # Create FDD record
+                        fdd = FDD(
+                            id=metadata.fdd_id,  # Use the placeholder FDD ID from metadata
+                            franchise_id=UUID(franchisor_id),
+                            source_name="MN",
+                            processing_status=ProcessingStatus.PENDING,
+                            issue_date=metadata.filing_metadata.get("filing_date", datetime.utcnow().date()),
+                            document_type=metadata.filing_metadata.get("document_type", "Initial"),
+                            filing_state="MN",
+                            drive_path="",  # Will be updated after upload
+                            drive_file_id="",  # Will be updated after upload
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        fdd_dict = serialize_for_db(fdd.model_dump())
+                        await db_manager.batch.batch_upsert('fdds', [fdd_dict])
+
+                    # Upload to Google Drive
+                    from tasks.drive_operations import get_drive_manager
+                    drive_manager = get_drive_manager()
+                    
+                    # Create state-specific folder structure
+                    root_folder_id = drive_manager.settings.gdrive_folder_id
+                    state_folder_id = drive_manager.get_or_create_folder(
+                        "Minnesota FDDs",
+                        parent_id=root_folder_id
+                    )
+                    
+                    # Clean franchise name for filename
+                    clean_name = franchise_name.replace("/", "_").replace("\\", "_")
+                    file_name = f"{clean_name}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+                    
+                    # Upload file
+                    uploaded_file_id = drive_manager.upload_file(
+                        file_content=content,
+                        filename=file_name,
+                        parent_id=state_folder_id,
+                        mime_type="application/pdf"
+                    )
+                    
+                    # Update FDD record with file path and hash
+                    async with get_database_manager() as db_manager:
+                        update_data = serialize_for_db({
+                            "drive_path": f"Minnesota FDDs/{file_name}",
+                            "drive_file_id": uploaded_file_id,
+                            "sha256_hash": doc_hash,
+                            "total_pages": None,  # Will be set during processing
+                            "processing_status": "pending",
+                            "updated_at": datetime.utcnow()
+                        })
+                        await db_manager.update_record(
+                            "fdds",
+                            str(fdd.id),
+                            update_data
+                        )
+                        
+                        # Update scrape metadata with successful status
+                        await db_manager.update_record(
+                            "scrape_metadata",
+                            str(metadata.id),
+                            {
+                                "scrape_status": "completed",
+                                "fdd_id": str(fdd.id)
+                            }
+                        )
+
                     pipeline_logger.info(
-                        "minnesota_document_downloaded",
+                        "minnesota_document_processed",
                         franchise_name=franchise_name,
                         file_size=len(content),
-                        sha256_hash=doc_hash[:16],  # Log first 16 chars
+                        sha256_hash=doc_hash[:16],
                         metadata_id=str(metadata.id),
+                        drive_file_id=uploaded_file_id
                     )
 
-                    downloaded_files.append(
-                        f"mn/{franchise_name.lower().replace(' ', '_')}.pdf"
-                    )
+                    downloaded_files.append(f"Minnesota FDDs/{file_name}")
 
                     # Add delay between downloads to be respectful
                     await asyncio.sleep(2.0)
@@ -271,16 +382,20 @@ async def collect_minnesota_metrics(
     metadata_records_created: int,
     documents_downloaded: int,
     prefect_run_id: UUID,
-    start_time: datetime,
+    execution_time: float,
+    success: bool,
+    error: Optional[str] = None,
 ) -> dict:
-    """Collect and store metrics for Minnesota scraping flow.
+    """Collect and store metrics for Minnesota scraping workflow.
 
     Args:
-        documents_discovered: Number of documents discovered
-        metadata_records_created: Number of metadata records created
-        documents_downloaded: Number of documents downloaded
+        documents_discovered: Number of documents found during scraping
+        metadata_records_created: Number of metadata records stored
+        documents_downloaded: Number of documents successfully downloaded
         prefect_run_id: Prefect run ID for tracking
-        start_time: Flow start time
+        execution_time: Total execution time in seconds
+        success: Whether the workflow completed successfully
+        error: Error message if workflow failed
 
     Returns:
         Dictionary with collected metrics
@@ -291,37 +406,38 @@ async def collect_minnesota_metrics(
     )
 
     try:
-        end_time = datetime.utcnow()
-        duration_seconds = (end_time - start_time).total_seconds()
-
         metrics = {
             "source": "MN",
             "prefect_run_id": str(prefect_run_id),
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
-            "duration_seconds": duration_seconds,
+            "timestamp": datetime.utcnow().isoformat(),
             "documents_discovered": documents_discovered,
             "metadata_records_created": metadata_records_created,
             "documents_downloaded": documents_downloaded,
+            "execution_time_seconds": execution_time,
             "success_rate": (
+                documents_downloaded / documents_discovered
+                if documents_discovered > 0
+                else 0
+            ),
+            "processing_rate": (
                 metadata_records_created / documents_discovered
                 if documents_discovered > 0
                 else 0
             ),
-            "download_rate": (
-                documents_downloaded / metadata_records_created
-                if metadata_records_created > 0
-                else 0
-            ),
+            "success": success,
+            "error": error,
         }
 
-        # Log metrics
+        # Log metrics for monitoring
         pipeline_logger.info(
-            "minnesota_scraping_metrics",
+            "minnesota_workflow_metrics",
             **metrics,
         )
 
-        logger.info(f"Minnesota scraping metrics collected: {metrics}")
+        # TODO: Store metrics in database for historical tracking
+        # This would involve creating a workflow_metrics table and storing these values
+
+        logger.info(f"Minnesota workflow metrics collected: {metrics}")
         return metrics
 
     except Exception as e:
@@ -331,12 +447,19 @@ async def collect_minnesota_metrics(
             error=str(e),
             run_id=str(prefect_run_id),
         )
-        return {}
+        # Return basic metrics even if collection fails
+        return {
+            "source": "MN",
+            "prefect_run_id": str(prefect_run_id),
+            "timestamp": datetime.utcnow().isoformat(),
+            "success": False,
+            "error": f"Metrics collection failed: {e}",
+        }
 
 
 @flow(
     name="scrape-minnesota-portal",
-    description="Scrape Minnesota franchise portal for FDD documents",
+    description="Scrape Minnesota CARDS portal for FDD documents",
     task_runner=ConcurrentTaskRunner(),
     retries=1,
     retry_delay_seconds=300,
@@ -344,14 +467,14 @@ async def collect_minnesota_metrics(
 async def scrape_minnesota_flow(
     download_documents: bool = True, max_documents: Optional[int] = None
 ) -> dict:
-    """Main flow for scraping Minnesota franchise portal.
+    """Main flow for scraping Minnesota CARDS portal.
 
     Args:
         download_documents: Whether to download document content
         max_documents: Optional limit on number of documents to process
 
     Returns:
-        Dictionary with flow execution results
+        Dictionary with flow execution results and metrics
     """
     logger = get_run_logger()
     prefect_run_id = uuid4()
@@ -378,12 +501,14 @@ async def scrape_minnesota_flow(
             )
 
         # Step 4: Collect metrics
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
         metrics = await collect_minnesota_metrics(
             documents_discovered=len(documents),
             metadata_records_created=len(metadata_list),
             documents_downloaded=len(downloaded_files),
             prefect_run_id=prefect_run_id,
-            start_time=start_time,
+            execution_time=execution_time,
+            success=True,
         )
 
         # Prepare results
@@ -392,6 +517,7 @@ async def scrape_minnesota_flow(
             "documents_discovered": len(documents),
             "metadata_records_created": len(metadata_list),
             "documents_downloaded": len(downloaded_files),
+            "execution_time_seconds": execution_time,
             "success": True,
             "timestamp": datetime.utcnow().isoformat(),
             "metrics": metrics,
@@ -401,29 +527,33 @@ async def scrape_minnesota_flow(
         return results
 
     except Exception as e:
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
         logger.error(f"Minnesota scraping flow failed: {e}")
 
-        # Still try to collect partial metrics
+        # Collect failure metrics
         try:
-            partial_metrics = await collect_minnesota_metrics(
+            metrics = await collect_minnesota_metrics(
                 documents_discovered=0,
                 metadata_records_created=0,
                 documents_downloaded=0,
                 prefect_run_id=prefect_run_id,
-                start_time=start_time,
+                execution_time=execution_time,
+                success=False,
+                error=str(e),
             )
-        except:
-            partial_metrics = {}
+        except Exception:
+            metrics = {"error": "Failed to collect failure metrics"}
 
         return {
             "prefect_run_id": str(prefect_run_id),
             "documents_discovered": 0,
             "metadata_records_created": 0,
             "documents_downloaded": 0,
+            "execution_time_seconds": execution_time,
             "success": False,
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat(),
-            "metrics": partial_metrics,
+            "metrics": metrics,
         }
 
 

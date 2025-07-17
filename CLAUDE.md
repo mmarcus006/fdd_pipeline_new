@@ -114,14 +114,88 @@ async def extract_section(text: str, model: str = "gemini-pro"):
 
 ```python
 # Always use utils.database functions
-from utils.database import get_supabase_client, store_franchise_data
+from utils.database import get_database_manager
+
+# Pattern for database operations with proper serialization
+db_manager = get_database_manager()
+
+# Helper function to serialize data for database
+def serialize_for_db(data: dict) -> dict:
+    """Convert UUID and datetime objects to strings for JSON serialization."""
+    serialized = {}
+    for key, value in data.items():
+        if isinstance(value, UUID):
+            serialized[key] = str(value)
+        elif isinstance(value, datetime):
+            serialized[key] = value.isoformat()
+        elif isinstance(value, dict):
+            serialized[key] = serialize_for_db(value)
+        elif isinstance(value, list):
+            serialized[key] = [serialize_for_db(item) if isinstance(item, dict) else item for item in value]
+        else:
+            serialized[key] = value
+    return serialized
 
 # Pattern for idempotent operations
-client = get_supabase_client()
-existing = client.table("franchises").select("*").eq("portal_id", id).execute()
-if not existing.data:
+existing = await db_manager.get_records_by_filter(
+    "franchisors", 
+    {"canonical_name": franchisor_name}
+)
+if not existing:
     # Insert new record
+    franchisor_dict = serialize_for_db(franchisor.model_dump())
+    await db_manager.batch.batch_upsert('franchisors', [franchisor_dict], conflict_columns=['canonical_name'])
+
+# Update operations
+update_data = serialize_for_db({
+    'processing_status': 'completed',
+    'updated_at': datetime.utcnow()
+})
+await db_manager.update_record('fdds', str(fdd_id), update_data)
 ```
+
+### Database Schema
+
+The database consists of 23 tables organized into these categories:
+
+1. **Core Tables**
+   - `franchisors` - Franchise companies with deduplication support
+   - `fdds` - FDD documents with versioning
+   - `fdd_sections` - Individual sections within FDDs
+   - `scrape_metadata` - Scraping state tracking
+
+2. **Structured Data Tables** (Items from FDD)
+   - `item5_fees` - Initial franchise fees
+   - `item6_other_fees` - Other fees and costs
+   - `item7_investment` - Initial investment breakdown
+   - `item19_fpr` - Financial performance representations
+   - `item20_outlets` - Outlet/franchise information by state
+   - `item21_financials` - Financial statements
+   - `item_json` - Generic JSON storage for flexibility
+
+3. **Operational Tables**
+   - `pipeline_logs` - Detailed logging
+   - `prefect_runs` - Workflow tracking
+   - `drive_files` - Google Drive file metadata
+   - `validation_results` - Data validation tracking
+   - `validation_errors` - Detailed validation errors
+   - `validation_bypasses` - Manual override tracking
+
+### Database Setup
+
+Run this SQL in Supabase SQL editor:
+
+```sql
+-- Use the fixed migration file:
+-- /mnt/c/Users/Miller/projects/fdd_pipeline_new/migrations/fixed_combined_migrations.sql
+```
+
+Key features:
+- PostgreSQL with `uuid-ossp` and `vector` extensions
+- Row-level security (RLS) enabled on all tables
+- Vector similarity search for franchise deduplication
+- Comprehensive indexes for performance
+- Audit trails with created_at/updated_at timestamps
 
 ## Environment Configuration
 
@@ -210,3 +284,34 @@ scraper = WisconsinScraper(headless=False)  # Visual debugging
 - **Playwright timeout**: Increase timeout or use --headed mode
 - **Supabase auth errors**: Check SERVICE_KEY vs ANON_KEY usage
 - **LLM extraction failures**: Check fallback chain and API keys
+- **Database serialization errors**: Use `serialize_for_db()` helper for UUID/datetime objects
+- **"relation does not exist" errors**: Run the SQL migrations in Supabase
+- **"JSON could not be generated" errors**: Check for proper data serialization before database operations
+
+### Database Debugging
+
+```python
+# Test database connection
+from utils.database import get_database_manager
+db = get_database_manager()
+health = db.health_check.check_connection()
+print(f"Database health: {health}")
+
+# Check if tables exist
+if db.health_check.check_table_exists('franchisors'):
+    print("Tables are properly created")
+else:
+    print("Run migrations first!")
+
+# Debug serialization issues
+from datetime import datetime
+from uuid import uuid4
+
+# Wrong way - will fail
+data = {'id': uuid4(), 'created_at': datetime.utcnow()}
+# db.batch.batch_upsert('table', [data], ...)  # ERROR!
+
+# Correct way
+data = serialize_for_db({'id': uuid4(), 'created_at': datetime.utcnow()})
+# db.batch.batch_upsert('table', [data], ...)  # SUCCESS!
+```
