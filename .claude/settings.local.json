@@ -1,59 +1,15 @@
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "mcp__",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/mcp-security-scan.sh"
-          }
-        ]
-      }
-,
-      {
-        "matcher": "mcp__gemini",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/gemini-context-injector.sh"
-          }
-        ]
-      }
-,
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/subagent-context-injector.sh"
-          }
-        ]
-      }
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(grep:*)",
+      "Bash(for file in item5_fees item6_other_fees item7_investment item19_fpr item20_outlets item21_financials)",
+      "Bash(do echo \"=== Checking $file.py for $file_response references ===\")",
+      "Bash(done)",
+      "Bash(rm:*)",
+      "Bash(echo:*)"
     ]
-,
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/notify.sh input"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/notify.sh complete"
-          }
-        ]
-      }
-    ]
-
   }
 }

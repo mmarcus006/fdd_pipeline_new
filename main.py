@@ -39,7 +39,7 @@ import json
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.logging import get_logger
-from utils.database import get_database_manager
+from utils.database import get_database_manager, serialize_for_db
 from config import get_settings
 
 logger = get_logger(__name__)
@@ -59,26 +59,6 @@ async def scrape(state: str, limit: Optional[int], test_mode: bool):
     from flows.scrape_wisconsin import scrape_wisconsin_portal
     
     logger.info(f"Starting scraping for: {state}")
-    
-    # Helper function to serialize data for database
-    def serialize_for_db(data: dict) -> dict:
-        """Convert UUID and datetime objects to strings for JSON serialization."""
-        from uuid import UUID
-        from datetime import datetime
-        
-        serialized = {}
-        for key, value in data.items():
-            if isinstance(value, UUID):
-                serialized[key] = str(value)
-            elif isinstance(value, datetime):
-                serialized[key] = value.isoformat()
-            elif isinstance(value, dict):
-                serialized[key] = serialize_for_db(value)
-            elif isinstance(value, list):
-                serialized[key] = [serialize_for_db(item) if isinstance(item, dict) else item for item in value]
-            else:
-                serialized[key] = value
-        return serialized
     
     try:
         if state in ['minnesota', 'all']:

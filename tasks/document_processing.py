@@ -17,6 +17,16 @@ import PyPDF2
 from config import get_settings
 from models.section import FDDSection, ExtractionStatus
 from utils.logging import PipelineLogger
+from tasks.exceptions import (
+    DocumentProcessingException,
+    PDFReadError,
+    MinerUConnectionError,
+    MinerUProcessingError,
+    LayoutAnalysisError,
+    SectionDetectionError,
+    RetryableError,
+    get_retry_delay,
+)
 
 
 class LayoutElement(BaseModel):
@@ -55,6 +65,7 @@ class MinerUClient:
         self.settings = get_settings()
         self.logger = PipelineLogger("mineru_client")
         self.mode = self.settings.mineru_mode
+        self.correlation_id = str(UUID())
 
         # API mode configuration
         if self.mode == "api":
@@ -64,7 +75,11 @@ class MinerUClient:
             self._semaphore = asyncio.Semaphore(self.rate_limit)
 
             if not self.api_key:
-                raise ValueError("MinerU API key is required for API mode")
+                raise MinerUConnectionError(
+                    "MinerU API key is required for API mode",
+                    correlation_id=self.correlation_id,
+                    context={"mode": self.mode}
+                )
 
         # Local mode configuration
         else:
@@ -73,7 +88,14 @@ class MinerUClient:
             self.batch_size = self.settings.mineru_batch_size
 
             # Ensure model directory exists for local mode
-            self.model_path.mkdir(parents=True, exist_ok=True)
+            try:
+                self.model_path.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise MinerUConnectionError(
+                    f"Failed to create MinerU model directory: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"model_path": str(self.model_path)}
+                )
 
     async def process_document(
         self, pdf_path: Path, timeout_seconds: int = 300
@@ -98,11 +120,16 @@ class MinerUClient:
                 "Starting MinerU document processing",
                 pdf_path=str(pdf_path),
                 mode=self.mode,
+                correlation_id=self.correlation_id,
             )
 
             # Validate input file
             if not pdf_path.exists():
-                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+                raise PDFReadError(
+                    f"PDF file not found: {pdf_path}",
+                    correlation_id=self.correlation_id,
+                    context={"pdf_path": str(pdf_path)}
+                )
 
             # Route to appropriate processing method
             if self.mode == "api":
@@ -127,16 +154,41 @@ class MinerUClient:
                 model_version=layout_result.model_version,
             )
 
+        except PDFReadError:
+            raise
+        except (MinerUConnectionError, MinerUProcessingError):
+            raise
+        except asyncio.TimeoutError:
+            processing_time = time.time() - start_time
+            raise MinerUProcessingError(
+                f"MinerU processing timed out after {timeout_seconds}s",
+                correlation_id=self.correlation_id,
+                context={
+                    "pdf_path": str(pdf_path),
+                    "timeout_seconds": timeout_seconds,
+                    "processing_time": processing_time
+                }
+            )
         except Exception as e:
             processing_time = time.time() - start_time
             self.logger.error(
                 "MinerU processing failed",
                 error=str(e),
+                error_type=type(e).__name__,
                 processing_time=processing_time,
                 pdf_path=str(pdf_path),
                 mode=self.mode,
+                correlation_id=self.correlation_id,
             )
-            raise
+            raise MinerUProcessingError(
+                f"Unexpected error during MinerU processing: {e}",
+                correlation_id=self.correlation_id,
+                context={
+                    "pdf_path": str(pdf_path),
+                    "mode": self.mode,
+                    "error_type": type(e).__name__
+                }
+            )
 
     async def _process_via_api(
         self, pdf_path: Path, timeout_seconds: int
@@ -158,9 +210,33 @@ class MinerUClient:
 
                 return layout_result
 
+            except httpx.HTTPError as e:
+                self.logger.error(
+                    "API processing failed",
+                    error=str(e),
+                    correlation_id=self.correlation_id
+                )
+                if hasattr(e, 'response') and e.response.status_code == 429:
+                    raise RetryableError(
+                        f"MinerU API rate limit exceeded: {e}",
+                        retry_after=int(e.response.headers.get('Retry-After', 60)),
+                        correlation_id=self.correlation_id
+                    )
+                raise MinerUConnectionError(
+                    f"MinerU API request failed: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"error_type": type(e).__name__}
+                )
             except Exception as e:
-                self.logger.error("API processing failed", error=str(e))
-                raise
+                self.logger.error(
+                    "API processing failed",
+                    error=str(e),
+                    correlation_id=self.correlation_id
+                )
+                raise MinerUProcessingError(
+                    f"MinerU API processing failed: {e}",
+                    correlation_id=self.correlation_id
+                )
 
     async def _upload_document_to_api(
         self, pdf_path: Path, timeout_seconds: int
@@ -188,15 +264,34 @@ class MinerUClient:
                 )
 
                 if response.status_code != 200:
-                    raise Exception(
-                        f"API upload failed: {response.status_code} - {response.text}"
-                    )
+                    error_msg = f"API upload failed: {response.status_code} - {response.text}"
+                    if response.status_code == 429:
+                        raise RetryableError(
+                            error_msg,
+                            retry_after=int(response.headers.get('Retry-After', 60)),
+                            correlation_id=self.correlation_id
+                        )
+                    elif response.status_code >= 500:
+                        raise RetryableError(
+                            error_msg,
+                            correlation_id=self.correlation_id
+                        )
+                    else:
+                        raise MinerUConnectionError(
+                            error_msg,
+                            correlation_id=self.correlation_id,
+                            context={"status_code": response.status_code}
+                        )
 
                 result = response.json()
                 job_id = result.get("job_id")
 
                 if not job_id:
-                    raise Exception("No job ID returned from API")
+                    raise MinerUProcessingError(
+                        "No job ID returned from API",
+                        correlation_id=self.correlation_id,
+                        context={"response": result}
+                    )
 
                 self.logger.info("Document uploaded to API", job_id=job_id)
                 return job_id
@@ -218,7 +313,16 @@ class MinerUClient:
                     )
 
                     if response.status_code != 200:
-                        raise Exception(f"Status check failed: {response.status_code}")
+                        if response.status_code == 404:
+                            raise MinerUProcessingError(
+                                f"Job not found: {job_id}",
+                                correlation_id=self.correlation_id
+                            )
+                        else:
+                            raise MinerUConnectionError(
+                                f"Status check failed: {response.status_code}",
+                                correlation_id=self.correlation_id
+                            )
 
                     status_data = response.json()
                     status = status_data.get("status")
@@ -231,7 +335,11 @@ class MinerUClient:
 
                     elif status == "failed":
                         error_msg = status_data.get("error", "Unknown error")
-                        raise Exception(f"API processing failed: {error_msg}")
+                        raise MinerUProcessingError(
+                            f"API processing failed: {error_msg}",
+                            correlation_id=self.correlation_id,
+                            context={"job_id": job_id, "status_data": status_data}
+                        )
 
                     elif status in ["pending", "processing"]:
                         # Wait before next poll, with exponential backoff
@@ -240,14 +348,22 @@ class MinerUClient:
                         continue
 
                     else:
-                        raise Exception(f"Unknown API status: {status}")
+                        raise MinerUProcessingError(
+                            f"Unknown API status: {status}",
+                            correlation_id=self.correlation_id,
+                            context={"job_id": job_id, "status": status}
+                        )
 
                 except httpx.TimeoutException:
                     self.logger.warning("API status check timeout, retrying...")
                     await asyncio.sleep(poll_interval)
                     continue
 
-            raise Exception(f"API processing timeout after {timeout_seconds}s")
+            raise MinerUProcessingError(
+                f"API processing timeout after {timeout_seconds}s",
+                correlation_id=self.correlation_id,
+                context={"job_id": job_id, "timeout_seconds": timeout_seconds}
+            )
 
     async def _fetch_api_results(
         self, job_id: str, client: httpx.AsyncClient, headers: Dict[str, str]
@@ -258,7 +374,10 @@ class MinerUClient:
         )
 
         if response.status_code != 200:
-            raise Exception(f"Results fetch failed: {response.status_code}")
+            raise MinerUConnectionError(
+                f"Results fetch failed: {response.status_code}",
+                correlation_id=self.correlation_id
+            )
 
         results = response.json()
 
@@ -668,6 +787,7 @@ class FDDSectionDetector:
 
     def __init__(self):
         self.logger = PipelineLogger("section_detector")
+        self.correlation_id = str(UUID())
 
     def detect_sections(self, layout: DocumentLayout) -> List[SectionBoundary]:
         """

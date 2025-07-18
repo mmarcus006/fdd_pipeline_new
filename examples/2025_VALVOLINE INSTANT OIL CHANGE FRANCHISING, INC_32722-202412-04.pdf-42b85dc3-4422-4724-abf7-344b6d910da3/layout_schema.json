@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "properties": {
+    "pdf_info": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "para_blocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "bbox": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "blocks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "bbox": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "lines": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "bbox": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer"
+                              }
+                            },
+                            "spans": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "bbox": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "type": {
+                                    "type": "string"
+                                  },
+                                  "image_path": {
+                                    "type": "string"
+                                  },
+                                  "html": {
+                                    "type": "string"
+                                  },
+                                  "content": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "bbox",
+                                  "type"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "bbox",
+                            "spans"
+                          ]
+                        }
+                      },
+                      "index": {
+                        "type": "integer"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "bbox",
+                      "index",
+                      "lines",
+                      "type"
+                    ]
+                  }
+                },
+                "index": {
+                  "type": "integer"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "bbox": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "spans": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "bbox": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer"
+                              }
+                            },
+                            "type": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "bbox",
+                            "content",
+                            "type"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "bbox",
+                      "spans"
+                    ]
+                  }
+                },
+                "level": {
+                  "type": "integer"
+                },
+                "lines_deleted": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "bbox",
+                "index",
+                "type"
+              ]
+            }
+          },
+          "discarded_blocks": {
+            "type": "array"
+          },
+          "page_size": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "page_idx": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "discarded_blocks",
+          "page_idx",
+          "page_size",
+          "para_blocks"
+        ]
+      }
+    },
+    "_backend": {
+      "type": "string"
+    },
+    "_version_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "_backend",
+    "_version_name",
+    "pdf_info"
+  ]
+}

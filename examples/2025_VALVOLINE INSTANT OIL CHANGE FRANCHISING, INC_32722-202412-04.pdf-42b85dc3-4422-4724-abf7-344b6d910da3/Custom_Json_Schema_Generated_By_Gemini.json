@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PDF Information Extraction Schema",
+  "description": "Describes the structure of extracted data from a PDF document, organized by pages and content blocks.",
+  "type": "object",
+  "properties": {
+    "pdf_info": {
+      "type": "array",
+      "description": "An array where each object represents a single page from the source document.",
+      "items": {
+        "type": "object",
+        "description": "Contains all the extracted information for a single page.",
+        "properties": {
+          "para_blocks": {
+            "type": "array",
+            "description": "An array of primary content blocks found on the page.",
+            "items": {
+              "type": "object",
+              "description": "A single content block, which can be a title, text, table, or image.",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "The semantic type of the paragraph block.",
+                  "enum": ["image", "text", "title", "table"]
+                },
+                "bbox": {
+                  "type": "array",
+                  "description": "The bounding box of the block, represented as [x0, y0, x1, y1] coordinates for the top-left and bottom-right corners.",
+                  "items": { "type": "number" },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "blocks": {
+                  "type": "array",
+                  "description": "A nested array of content blocks, typically used for complex elements like tables and images. This field is present when 'type' is 'image' or 'table'.",
+                  "items": {
+                    "type": "object",
+                    "description": "A sub-block within a larger block structure.",
+                    "properties": {
+                       "bbox": {
+                        "type": "array",
+                        "description": "The bounding box of the sub-block.",
+                        "items": { "type": "number" },
+                        "minItems": 4,
+                        "maxItems": 4
+                      },
+                      "lines": {
+                        "type": "array",
+                        "description": "An array of line objects that make up the content of this sub-block.",
+                        "items": { "$ref": "#/definitions/line" }
+                      },
+                      "index": {
+                        "type": "integer",
+                        "description": "The zero-based index of this sub-block within its parent 'blocks' array."
+                      },
+                      "type": {
+                        "type": "string",
+                        "description": "The type of the sub-block.",
+                        "enum": ["image_body", "table_body", "table_caption"]
+                      }
+                    },
+                    "required": ["bbox", "lines", "index", "type"]
+                  }
+                },
+                "lines": {
+                  "type": "array",
+                  "description": "An array of line objects that make up the content. This field is present when 'type' is 'text' or 'title'.",
+                  "items": { "$ref": "#/definitions/line" }
+                },
+                "index": {
+                  "type": "integer",
+                  "description": "The zero-based index of this block within the page's 'para_blocks' array."
+                },
+                "level": {
+                  "type": "integer",
+                  "description": "The hierarchical level of a title. This field is only present when 'type' is 'title'."
+                }
+              },
+              "required": ["type", "bbox", "index"]
+            }
+          },
+          "discarded_blocks": {
+            "type": "array",
+            "description": "An array containing blocks that were identified but determined to be irrelevant (e.g., page numbers, running headers/footers). The structure is similar to 'para_blocks'. In the provided example, this is always empty."
+          },
+          "page_size": {
+            "type": "array",
+            "description": "The dimensions of the page as [width, height], measured in points.",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "page_idx": {
+            "type": "integer",
+            "description": "The zero-based index of the page within the document."
+          }
+        },
+        "required": ["para_blocks", "discarded_blocks", "page_size", "page_idx"]
+      }
+    }
+  },
+  "required": ["pdf_info"],
+  "definitions": {
+    "line": {
+      "type": "object",
+      "description": "Represents a single line of content, composed of one or more spans.",
+      "properties": {
+        "bbox": {
+          "type": "array",
+          "description": "The bounding box of the line.",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "spans": {
+          "type": "array",
+          "description": "An array of span objects that make up the line. A line can have multiple spans with different types (e.g., text mixed with an equation).",
+          "items": {
+            "type": "object",
+            "description": "A granular piece of content within a line.",
+            "properties": {
+              "bbox": {
+                "type": "array",
+                "description": "The bounding box of the span.",
+                "items": { "type": "number" },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "type": {
+                "type": "string",
+                "description": "The type of content within the span.",
+                "enum": ["image", "text", "inline_equation", "table"]
+              },
+              "image_path": {
+                "type": "string",
+                "description": "The file path to an associated image. This is present for 'image' and 'table' span types."
+              },
+              "content": {
+                "type": "string",
+                "description": "The text content of the span. This is present for 'text' and 'inline_equation' span types."
+              },
+              "html": {
+                "type": "string",
+                "description": "The HTML representation of the content. This is present for the 'table' span type."
+              }
+            },
+            "required": ["bbox", "type"]
+          }
+        }
+      },
+      "required": ["bbox", "spans"]
+    }
+  }
+}

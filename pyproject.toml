@@ -30,9 +30,9 @@ dependencies = [
     "click",
     "tqdm",
 
+    # Schema generation
+    "genson>=1.2.0",
 
-
-    
     # Web scraping & automation
     "playwright>=1.40.0",
     "beautifulsoup4>=4.12.0",
@@ -62,8 +62,11 @@ dependencies = [
     # Document processing
     "pypdf2>=3.0.0",
     # Note: magic-pdf installation is complex, install separately if needed
-    "magic-pdf[full]>=0.7.0",  # MinerU local with GPU support
-    "torch>=2.0.0",  # Required for MinerU GPU processing
+    # "magic-pdf[full]>=0.7.0",  # MinerU local with GPU support - commented out due to dependency conflicts
+    # "torch>=2.0.0",  # Required for MinerU GPU processing - commented out due to magic-pdf conflicts
+    
+    # Modern MinerU package (replaces magic-pdf)
+    "mineru[core]>=2.1.0",  # MinerU 2.0+ with Windows support
     
     # API framework
     "fastapi>=0.104.0",
@@ -96,6 +99,25 @@ dev = [
     "types-requests",
     "types-pyyaml",
     "pandas-stubs",
+]
+
+document-processing = [
+    # CPU-only document processing (Windows compatible)
+    # Note: Use mineru-full for GPU support instead
+    "pypdf2>=3.0.0",
+]
+
+# Alternative Windows-friendly document processing
+mineru-full = [
+    # Full MinerU with VLM support (Windows compatible)
+    "mineru[vlm]>=2.1.0",
+    "torch>=2.0.0",  # Works better with newer MinerU
+]
+
+# CPU-only document processing (most compatible)
+document-processing-cpu = [
+    # CPU-only MinerU processing (no GPU dependencies)
+    "mineru[core]>=2.1.0",
 ]
 
 [project.urls]

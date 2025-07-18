@@ -12,7 +12,7 @@ from prefect import flow
 from tasks.document_processing import process_document_layout
 from tasks.document_segmentation import segment_fdd_document
 from tasks.llm_extraction import FDDSectionExtractor
-from utils.database import get_database_manager
+from utils.database import get_database_manager, serialize_for_db
 from utils.pdf_extractor import extract_text_from_pdf
 from models.fdd import FDD, ProcessingStatus
 from models.franchisor import Franchisor
@@ -47,23 +47,6 @@ async def process_single_fdd_flow(pdf_path: str):
         franchisor_name = "Valvoline Instant Oil Change"
         franchisor_id = uuid4()
         now = datetime.utcnow()
-
-        # Helper function to serialize data for database
-        def serialize_for_db(data: dict) -> dict:
-            """Convert UUID and datetime objects to strings for JSON serialization."""
-            serialized = {}
-            for key, value in data.items():
-                if isinstance(value, UUID):
-                    serialized[key] = str(value)
-                elif isinstance(value, datetime):
-                    serialized[key] = value.isoformat()
-                elif isinstance(value, dict):
-                    serialized[key] = serialize_for_db(value)
-                elif isinstance(value, list):
-                    serialized[key] = [serialize_for_db(item) if isinstance(item, dict) else item for item in value]
-                else:
-                    serialized[key] = value
-            return serialized
 
         franchisor = Franchisor(
             id=franchisor_id,

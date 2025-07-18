@@ -9,6 +9,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 from collections import defaultdict
 import json
+from uuid import UUID
 
 import instructor
 from google.generativeai import GenerativeModel
@@ -25,14 +26,24 @@ from tenacity import (
 from config import get_settings
 from models.fdd import FDD
 from models.section import FDDSection
-from models.item5_fees_response import Item5FeesResponse
-from models.item6_other_fees_response import Item6OtherFeesResponse
-from models.item7_investment_response import Item7InvestmentResponse
-from models.item19_fpr_response import Item19FPRResponse
-from models.item20_outlets_response import Item20OutletsResponse
-from models.item21_financials_response import Item21FinancialsResponse
+from models.item5_fees import Item5FeesResponse
+from models.item6_other_fees import Item6OtherFeesResponse
+from models.item7_investment import Item7InvestmentResponse
+from models.item19_fpr import Item19FPRResponse
+from models.item20_outlets import Item20OutletsResponse
+from models.item21_financials import Item21FinancialsResponse
 from utils.prompt_loader import get_prompt_loader
 from utils.extraction_monitoring import get_extraction_monitor, MonitoredExtraction
+from tasks.exceptions import (
+    LLMExtractionException,
+    ModelInitializationError,
+    TokenLimitExceededError,
+    ExtractionTimeoutError,
+    InvalidExtractionResultError,
+    ModelAPIError,
+    RetryableError,
+    get_retry_delay,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -117,10 +128,8 @@ class ExtractionMetrics:
         return (self.successful_extractions / self.total_extractions) * 100
 
 
-class ExtractionError(Exception):
-    """Custom exception for extraction failures."""
-
-    pass
+# Remove local ExtractionError - we'll use the one from exceptions.py
+# The ExtractionError is now imported as LLMExtractionException
 
 
 class ModelSelector:
@@ -288,7 +297,7 @@ class LLMExtractor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((ExtractionError, ValidationError)),
+        retry=retry_if_exception_type((LLMExtractionException, ValidationError, RetryableError)),
     )
     async def extract_with_gemini(
         self,
@@ -321,7 +330,7 @@ class LLMExtractor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((ExtractionError, ValidationError)),
+        retry=retry_if_exception_type((LLMExtractionException, ValidationError, RetryableError)),
     )
     async def extract_with_ollama(
         self,
@@ -357,7 +366,7 @@ class LLMExtractor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((ExtractionError, ValidationError)),
+        retry=retry_if_exception_type((LLMExtractionException, ValidationError, RetryableError)),
     )
     async def extract_with_openai(
         self,
@@ -502,12 +511,37 @@ class FDDSectionExtractor:
                     "extracted_at": datetime.utcnow().isoformat(),
                 }
 
-            except ExtractionError as e:
-                logger.error(f"Failed to extract Item {section.item_no}: {e}")
+            except (LLMExtractionException, ModelAPIError, ExtractionTimeoutError) as e:
+                logger.error(
+                    f"Failed to extract Item {section.item_no}: {e}",
+                    extra={
+                        "section_item": section.item_no,
+                        "fdd_id": str(section.fdd_id),
+                        "error_type": type(e).__name__,
+                        "correlation_id": getattr(e, 'correlation_id', None)
+                    }
+                )
                 extraction_monitor.set_failed(str(e))
                 return {
                     "status": "failed",
                     "error": str(e),
+                    "error_type": type(e).__name__,
+                    "attempted_at": datetime.utcnow().isoformat(),
+                }
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error extracting Item {section.item_no}: {e}",
+                    extra={
+                        "section_item": section.item_no,
+                        "fdd_id": str(section.fdd_id),
+                        "error_type": type(e).__name__
+                    }
+                )
+                extraction_monitor.set_failed(str(e))
+                return {
+                    "status": "failed",
+                    "error": f"Unexpected error: {e}",
+                    "error_type": type(e).__name__,
                     "attempted_at": datetime.utcnow().isoformat(),
                 }
 
@@ -568,8 +602,19 @@ async def extract_fdd_document(
             result = await task
             results[f"item_{item_no}"] = result
         except Exception as e:
-            logger.error(f"Failed to extract Item {item_no}: {e}")
-            results[f"item_{item_no}"] = {"status": "failed", "error": str(e)}
+            logger.error(
+                f"Failed to extract Item {item_no}: {e}",
+                extra={
+                    "fdd_id": str(fdd.id),
+                    "item_no": item_no,
+                    "error_type": type(e).__name__
+                }
+            )
+            results[f"item_{item_no}"] = {
+                "status": "failed",
+                "error": str(e),
+                "error_type": type(e).__name__
+            }
 
     # Log extraction summary
     successful = sum(1 for r in results.values() if r.get("status") == "success")

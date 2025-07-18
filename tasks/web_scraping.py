@@ -22,6 +22,17 @@ from pydantic import BaseModel
 from config import get_settings
 from models.scrape_metadata import ScrapeMetadata
 from utils.logging import PipelineLogger
+from tasks.exceptions import (
+    WebScrapingException,
+    BrowserInitializationError,
+    NavigationTimeoutError,
+    ElementNotFoundError,
+    LoginFailedError,
+    DownloadFailedError,
+    RateLimitError,
+    RetryableError,
+    get_retry_delay,
+)
 
 
 class DocumentMetadata(BaseModel):
@@ -37,28 +48,11 @@ class DocumentMetadata(BaseModel):
     additional_metadata: Dict[str, Any] = {}
 
 
-class ScrapingError(Exception):
-    """Base exception for scraping errors."""
-
-    pass
-
-
-class NavigationError(ScrapingError):
-    """Error during page navigation."""
-
-    pass
-
-
-class ExtractionError(ScrapingError):
-    """Error during data extraction."""
-
-    pass
-
-
-class DownloadError(ScrapingError):
-    """Error during document download."""
-
-    pass
+# Remove local exception classes - we'll use the ones from exceptions.py
+# ScrapingError -> WebScrapingException
+# NavigationError -> NavigationTimeoutError
+# ExtractionError -> ElementNotFoundError  
+# DownloadError -> DownloadFailedError
 
 
 class BaseScraper(ABC):
@@ -92,9 +86,10 @@ class BaseScraper(ABC):
         self.headless = headless
         self.timeout = timeout
         self.settings = get_settings()
+        self.correlation_id = str(prefect_run_id) if prefect_run_id else str(UUID())
         self.logger = PipelineLogger(
             f"scraper.{source_name.lower()}",
-            prefect_run_id=str(prefect_run_id) if prefect_run_id else None,
+            prefect_run_id=self.correlation_id,
         )
 
         # Browser management
@@ -166,9 +161,17 @@ class BaseScraper(ABC):
             self.logger.info("scraper_initialized", user_agent=user_agent)
 
         except Exception as e:
-            self.logger.error("scraper_initialization_failed", error=str(e))
+            self.logger.error(
+                "scraper_initialization_failed",
+                error=str(e),
+                correlation_id=self.correlation_id
+            )
             await self.cleanup()
-            raise ScrapingError(f"Failed to initialize scraper: {e}")
+            raise BrowserInitializationError(
+                f"Failed to initialize scraper: {e}",
+                correlation_id=self.correlation_id,
+                context={"source_name": self.source_name, "error_type": type(e).__name__}
+            )
 
     async def cleanup(self) -> None:
         """Clean up browser and HTTP client resources."""
@@ -261,8 +264,14 @@ class BaseScraper(ABC):
             max_attempts=self.max_retries,
             final_error=str(last_exception),
         )
-        raise ScrapingError(
-            f"{operation_name} failed after {self.max_retries} attempts: {last_exception}"
+        raise WebScrapingException(
+            f"{operation_name} failed after {self.max_retries} attempts: {last_exception}",
+            correlation_id=self.correlation_id,
+            context={
+                "operation": operation_name,
+                "max_retries": self.max_retries,
+                "last_error_type": type(last_exception).__name__
+            }
         )
 
     async def safe_navigate(self, url: str, wait_for: Optional[str] = None) -> None:
@@ -276,7 +285,10 @@ class BaseScraper(ABC):
             NavigationError: If navigation fails
         """
         if not self.page:
-            raise NavigationError("Page not initialized")
+            raise NavigationTimeoutError(
+                "Page not initialized",
+                correlation_id=self.correlation_id
+            )
 
         try:
             self.logger.debug("navigating_to_url", url=url)
@@ -289,8 +301,24 @@ class BaseScraper(ABC):
             self.logger.debug("navigation_successful", url=url)
 
         except Exception as e:
-            self.logger.error("navigation_failed", url=url, error=str(e))
-            raise NavigationError(f"Failed to navigate to {url}: {e}")
+            self.logger.error(
+                "navigation_failed",
+                url=url,
+                error=str(e),
+                correlation_id=self.correlation_id
+            )
+            if "timeout" in str(e).lower():
+                raise NavigationTimeoutError(
+                    f"Navigation timeout for {url}: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"url": url, "timeout": self.timeout}
+                )
+            else:
+                raise WebScrapingException(
+                    f"Failed to navigate to {url}: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"url": url, "error_type": type(e).__name__}
+                )
 
     async def safe_click(self, selector: str, timeout: Optional[int] = None) -> None:
         """Safely click an element with error handling.
@@ -303,21 +331,44 @@ class BaseScraper(ABC):
             ExtractionError: If click fails
         """
         if not self.page:
-            raise ExtractionError("Page not initialized")
+            raise ElementNotFoundError(
+                "Page not initialized",
+                correlation_id=self.correlation_id
+            )
 
         try:
             element = await self.page.wait_for_selector(
                 selector, timeout=timeout or self.timeout
             )
             if not element:
-                raise ExtractionError(f"Element not found: {selector}")
+                raise ElementNotFoundError(
+                    f"Element not found: {selector}",
+                    correlation_id=self.correlation_id,
+                    context={"selector": selector}
+                )
 
             await element.click()
             self.logger.debug("element_clicked", selector=selector)
 
         except Exception as e:
-            self.logger.error("click_failed", selector=selector, error=str(e))
-            raise ExtractionError(f"Failed to click {selector}: {e}")
+            self.logger.error(
+                "click_failed",
+                selector=selector,
+                error=str(e),
+                correlation_id=self.correlation_id
+            )
+            if "timeout" in str(e).lower():
+                raise NavigationTimeoutError(
+                    f"Timeout waiting for element {selector}: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"selector": selector, "timeout": timeout or self.timeout}
+                )
+            else:
+                raise ElementNotFoundError(
+                    f"Failed to click {selector}: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"selector": selector, "error_type": type(e).__name__}
+                )
 
     async def safe_fill(
         self, selector: str, value: str, timeout: Optional[int] = None
@@ -333,14 +384,21 @@ class BaseScraper(ABC):
             ExtractionError: If fill fails
         """
         if not self.page:
-            raise ExtractionError("Page not initialized")
+            raise ElementNotFoundError(
+                "Page not initialized",
+                correlation_id=self.correlation_id
+            )
 
         try:
             element = await self.page.wait_for_selector(
                 selector, timeout=timeout or self.timeout
             )
             if not element:
-                raise ExtractionError(f"Element not found: {selector}")
+                raise ElementNotFoundError(
+                    f"Element not found: {selector}",
+                    correlation_id=self.correlation_id,
+                    context={"selector": selector}
+                )
 
             await element.fill(value)
             self.logger.debug(
@@ -348,8 +406,24 @@ class BaseScraper(ABC):
             )
 
         except Exception as e:
-            self.logger.error("fill_failed", selector=selector, error=str(e))
-            raise ExtractionError(f"Failed to fill {selector}: {e}")
+            self.logger.error(
+                "fill_failed",
+                selector=selector,
+                error=str(e),
+                correlation_id=self.correlation_id
+            )
+            if "timeout" in str(e).lower():
+                raise NavigationTimeoutError(
+                    f"Timeout waiting for element {selector}: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"selector": selector, "timeout": timeout or self.timeout}
+                )
+            else:
+                raise ElementNotFoundError(
+                    f"Failed to fill {selector}: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"selector": selector, "error_type": type(e).__name__}
+                )
 
     async def download_document(
         self, url: str, expected_size: Optional[int] = None
@@ -367,34 +441,82 @@ class BaseScraper(ABC):
             DownloadError: If download fails
         """
         if not self.http_client:
-            raise DownloadError("HTTP client not initialized")
+            raise DownloadFailedError(
+                "HTTP client not initialized",
+                correlation_id=self.correlation_id
+            )
 
         async def _download():
-            self.logger.debug("downloading_document", url=url)
+            self.logger.debug("downloading_document", url=url, correlation_id=self.correlation_id)
 
-            response = await self.http_client.get(url)
-            response.raise_for_status()
+            try:
+                response = await self.http_client.get(url)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    raise RateLimitError(
+                        f"Rate limited while downloading: {e}",
+                        retry_after=int(e.response.headers.get('Retry-After', 60)),
+                        correlation_id=self.correlation_id,
+                        context={"url": url, "status_code": e.response.status_code}
+                    )
+                elif e.response.status_code >= 500:
+                    raise RetryableError(
+                        f"Server error while downloading: {e}",
+                        correlation_id=self.correlation_id,
+                        context={"url": url, "status_code": e.response.status_code}
+                    )
+                else:
+                    raise DownloadFailedError(
+                        f"HTTP error while downloading: {e}",
+                        correlation_id=self.correlation_id,
+                        context={"url": url, "status_code": e.response.status_code}
+                    )
+            except httpx.TimeoutException as e:
+                raise DownloadFailedError(
+                    f"Download timeout: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"url": url, "timeout": self.http_client.timeout}
+                )
+            except Exception as e:
+                raise DownloadFailedError(
+                    f"Download failed: {e}",
+                    correlation_id=self.correlation_id,
+                    context={"url": url, "error_type": type(e).__name__}
+                )
 
             content = response.content
 
             # Validate content
             if not content:
-                raise DownloadError("Downloaded content is empty")
+                raise DownloadFailedError(
+                    "Downloaded content is empty",
+                    correlation_id=self.correlation_id,
+                    context={"url": url}
+                )
 
             if expected_size and len(content) != expected_size:
                 self.logger.warning(
-                    "size_mismatch", expected=expected_size, actual=len(content)
+                    "size_mismatch", 
+                    expected=expected_size, 
+                    actual=len(content),
+                    correlation_id=self.correlation_id
                 )
 
             # Validate PDF header
             if not content.startswith(b"%PDF"):
-                raise DownloadError("Downloaded content is not a valid PDF")
+                raise DownloadFailedError(
+                    "Downloaded content is not a valid PDF",
+                    correlation_id=self.correlation_id,
+                    context={"url": url, "content_preview": content[:20].hex() if content else "empty"}
+                )
 
             self.logger.info(
                 "document_downloaded",
                 url=url,
                 size=len(content),
                 sha256=hashlib.sha256(content).hexdigest()[:16],
+                correlation_id=self.correlation_id
             )
 
             return content
@@ -420,7 +542,9 @@ class BaseScraper(ABC):
             List of document metadata
 
         Raises:
-            ScrapingError: If discovery fails
+            WebScrapingException: If discovery fails
+            NavigationTimeoutError: If page navigation times out
+            ElementNotFoundError: If required elements are not found
         """
         pass
 
@@ -435,7 +559,9 @@ class BaseScraper(ABC):
             Document metadata
 
         Raises:
-            ExtractionError: If metadata extraction fails
+            ElementNotFoundError: If metadata extraction fails
+            NavigationTimeoutError: If page navigation times out
+            WebScrapingException: If unexpected error occurs
         """
         pass
 
@@ -503,7 +629,15 @@ class BaseScraper(ABC):
             self.logger.error(
                 "portal_scrape_failed", source=self.source_name, error=str(e)
             )
-            raise ScrapingError(f"Portal scraping failed for {self.source_name}: {e}")
+            raise WebScrapingException(
+                f"Portal scraping failed for {self.source_name}: {e}",
+                correlation_id=self.correlation_id,
+                context={
+                    "source_name": self.source_name,
+                    "error_type": type(e).__name__,
+                    "documents_discovered": len(documents) if 'documents' in locals() else 0
+                }
+            )
 
 
 @asynccontextmanager
@@ -517,10 +651,27 @@ async def create_scraper(scraper_class, *args, **kwargs):
 
     Yields:
         Initialized scraper instance
+        
+    Raises:
+        BrowserInitializationError: If browser fails to start
+        WebScrapingException: If scraper initialization fails
     """
     scraper = scraper_class(*args, **kwargs)
     try:
         await scraper.initialize()
         yield scraper
+    except BrowserInitializationError:
+        # Re-raise browser initialization errors
+        raise
+    except Exception as e:
+        # Wrap other errors with context
+        raise WebScrapingException(
+            f"Scraper context manager failed: {e}",
+            correlation_id=getattr(scraper, 'correlation_id', None),
+            context={
+                "scraper_class": scraper_class.__name__,
+                "error_type": type(e).__name__
+            }
+        )
     finally:
         await scraper.cleanup()
