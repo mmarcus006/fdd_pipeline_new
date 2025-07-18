@@ -319,7 +319,8 @@ def create_document_filename(
     year: Optional[str] = None,
     filing_number: Optional[str] = None,
     document_type: str = "FDD",
-    extension: str = ".pdf"
+    extension: str = ".pdf",
+    uuid: Optional[str] = None
 ) -> str:
     """
     Create a standardized filename for franchise documents.
@@ -330,11 +331,16 @@ def create_document_filename(
         filing_number: Filing number if available
         document_type: Type of document (FDD, Amendment, etc.)
         extension: File extension
+        uuid: Optional UUID to include in filename for tracking
         
     Returns:
         Standardized filename
     """
     parts = []
+    
+    # Add UUID if available (for unique identification)
+    if uuid:
+        parts.append(str(uuid))
     
     # Add year if available
     if year:

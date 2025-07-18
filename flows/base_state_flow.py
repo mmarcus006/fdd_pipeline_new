@@ -343,7 +343,8 @@ async def download_state_documents(
                     
                     # Clean franchise name for filename
                     clean_name = franchise_name.replace("/", "_").replace("\\", "_")
-                    file_name = f"{clean_name}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+                    # Include UUID in filename for unique identification and tracking
+                    file_name = f"{str(fdd.id)}_{clean_name}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
                     
                     # Upload file
                     uploaded_file_id = drive_manager.upload_file(
@@ -356,7 +357,7 @@ async def download_state_documents(
                     # Update FDD record with file path and hash
                     async with get_database_manager() as db_manager:
                         update_data = serialize_for_db({
-                            "drive_path": f"{state_config.folder_name}/{file_name}",
+                            "drive_path": f"/{state_config.folder_name}/{file_name}",
                             "drive_file_id": uploaded_file_id,
                             "sha256_hash": doc_hash,
                             "total_pages": None,  # Will be set during processing
@@ -388,7 +389,7 @@ async def download_state_documents(
                         drive_file_id=uploaded_file_id
                     )
 
-                    downloaded_files.append(f"{state_config.folder_name}/{file_name}")
+                    downloaded_files.append(f"/{state_config.folder_name}/{file_name}")
 
                     # Add delay between downloads to be respectful
                     await asyncio.sleep(2.0)
