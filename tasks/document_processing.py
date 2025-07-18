@@ -46,6 +46,7 @@ class DocumentLayout(BaseModel):
     elements: List[LayoutElement]
     processing_time: float
     model_version: str
+    mineru_output_dir: Optional[str] = Field(None, description="Path to MinerU output directory with layout.json")
 
 
 class SectionBoundary(BaseModel):
@@ -520,6 +521,7 @@ class MinerUClient:
                 elements=layout_elements,
                 processing_time=0.0,  # Will be set by caller
                 model_version="mineru-local",
+                mineru_output_dir=str(output_dir),
             )
 
         except ImportError as e:
@@ -677,6 +679,7 @@ class MinerUClient:
                 elements=layout_elements,
                 processing_time=0.0,
                 model_version="mineru-existing",
+                mineru_output_dir=str(output_dir),
             )
 
         except Exception as e:
@@ -990,9 +993,8 @@ async def process_document_layout(
     try:
         logger.info("Starting document layout processing", pdf_path=pdf_path)
 
+        settings = get_settings()
         client = MinerUClient()
-        detector = FDDSectionDetector()
-
         pdf_file = Path(pdf_path)
 
         # Try MinerU processing first
@@ -1005,13 +1007,63 @@ async def process_document_layout(
             layout = await client.fallback_to_pypdf2(pdf_file)
 
         # Detect section boundaries
-        sections = detector.detect_sections(layout)
+        sections = []
+        
+        # Use enhanced detector if configured and MinerU output is available
+        if settings.use_enhanced_section_detection and layout.mineru_output_dir:
+            try:
+                from utils.fdd_section_detector_integration import create_integrated_detector
+                
+                logger.info(
+                    "Using enhanced section detection",
+                    mineru_output_dir=layout.mineru_output_dir,
+                )
+                
+                detector = create_integrated_detector(
+                    enhanced_config={
+                        'confidence_threshold': settings.enhanced_detection_confidence_threshold,
+                        'min_fuzzy_score': settings.enhanced_detection_min_fuzzy_score,
+                    }
+                )
+                
+                # Check if layout.json exists
+                layout_json_path = Path(layout.mineru_output_dir) / "layout.json"
+                if layout_json_path.exists():
+                    sections = detector.detect_sections(
+                        mineru_json_path=str(layout_json_path),
+                        total_pages=layout.total_pages,
+                    )
+                    logger.info(
+                        "Enhanced detection completed",
+                        sections_detected=len(sections),
+                    )
+                else:
+                    logger.warning(
+                        "layout.json not found, falling back to basic detection",
+                        expected_path=str(layout_json_path),
+                    )
+                    
+            except Exception as e:
+                logger.error(
+                    "Enhanced detection failed, falling back to basic detection",
+                    error=str(e),
+                )
+        
+        # Fallback to basic detection if enhanced not used or failed
+        if not sections:
+            detector = FDDSectionDetector()
+            sections = detector.detect_sections(layout)
+            logger.info(
+                "Basic detection completed",
+                sections_detected=len(sections),
+            )
 
         logger.info(
             "Document layout processing completed",
             total_pages=layout.total_pages,
             sections_detected=len(sections),
             processing_time=layout.processing_time,
+            detection_method="enhanced" if settings.use_enhanced_section_detection and layout.mineru_output_dir else "basic",
         )
 
         return layout, sections

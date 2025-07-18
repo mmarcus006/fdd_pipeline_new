@@ -26,6 +26,7 @@ from tenacity import (
 from config import get_settings
 from models.fdd import FDD
 from models.section import FDDSection
+from models.franchisor import FranchisorCreate
 from models.item5_fees import Item5FeesResponse
 from models.item6_other_fees import Item6OtherFeesResponse
 from models.item7_investment import Item7InvestmentResponse
@@ -247,7 +248,7 @@ class LLMExtractor:
         genai.configure(api_key=settings.gemini_api_key)
         self.gemini_model = GenerativeModel("gemini-1.5-pro")
         self.gemini_client = instructor.from_gemini(
-            client=genai, model=self.gemini_model, use_async=True
+            client=self.gemini_model, use_async=True
         )
 
         # Initialize OpenAI (if configured)
@@ -267,7 +268,8 @@ class LLMExtractor:
             from ollama import AsyncClient as OllamaClient
 
             ollama_client = OllamaClient(host=settings.ollama_base_url, timeout=120.0)
-            self.ollama_client = instructor.from_ollama(ollama_client)
+            # Ollama integration not yet available in instructor
+            self.ollama_client = None  # instructor.from_ollama(ollama_client)
             self.ollama_available = True
             logger.info(f"Ollama client initialized: {settings.ollama_base_url}")
         except Exception as e:
@@ -310,14 +312,15 @@ class LLMExtractor:
         try:
             logger.info(f"Extracting {response_model.__name__} with Gemini")
 
+            # Instructor with Gemini uses a different interface
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content},
+            ]
+            
             response = await self.gemini_client.create(
-                model="gemini-2.5-pro",
                 response_model=response_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": content},
-                ],
-                temperature=temperature,
+                messages=messages,
                 max_retries=2,
             )
 
@@ -325,7 +328,7 @@ class LLMExtractor:
 
         except Exception as e:
             logger.error(f"Gemini extraction failed: {e}")
-            raise ExtractionError(f"Gemini extraction failed: {e}")
+            raise LLMExtractionException(f"Gemini extraction failed: {e}")
 
     @retry(
         stop=stop_after_attempt(3),
@@ -342,7 +345,7 @@ class LLMExtractor:
     ) -> T:
         """Extract structured data using local Ollama models."""
         if not self.ollama_available:
-            raise ExtractionError("Ollama is not available")
+            raise LLMExtractionException("Ollama is not available")
 
         try:
             logger.info(f"Extracting {response_model.__name__} with Ollama ({model})")
@@ -361,7 +364,7 @@ class LLMExtractor:
 
         except Exception as e:
             logger.error(f"Ollama extraction failed: {e}")
-            raise ExtractionError(f"Ollama extraction failed: {e}")
+            raise LLMExtractionException(f"Ollama extraction failed: {e}")
 
     @retry(
         stop=stop_after_attempt(3),
@@ -378,7 +381,7 @@ class LLMExtractor:
     ) -> T:
         """Extract structured data using OpenAI GPT-4."""
         if not self.openai_client:
-            raise ExtractionError("OpenAI client not configured")
+            raise LLMExtractionException("OpenAI client not configured")
 
         try:
             logger.info(f"Extracting {response_model.__name__} with OpenAI ({model})")
@@ -398,7 +401,7 @@ class LLMExtractor:
 
         except Exception as e:
             logger.error(f"OpenAI extraction failed: {e}")
-            raise ExtractionError(f"OpenAI extraction failed: {e}")
+            raise LLMExtractionException(f"OpenAI extraction failed: {e}")
 
     async def extract_with_fallback(
         self,
@@ -446,12 +449,84 @@ class LLMExtractor:
                 )
                 logger.info(f"Successfully extracted with {model_name}")
                 return result, model_name
-            except ExtractionError as e:
+            except LLMExtractionException as e:
                 last_error = e
                 logger.warning(f"{model_name} failed, trying next model: {e}")
                 continue
 
-        raise ExtractionError(f"All models failed. Last error: {last_error}")
+        raise LLMExtractionException(f"All models failed. Last error: {last_error}")
+
+    async def extract_franchisor(
+        self,
+        content: str,
+        prefect_run_id: Optional[UUID] = None,
+    ) -> Union[FranchisorCreate, dict]:
+        """
+        Extract franchisor information from FDD content.
+        
+        Args:
+            content: Text content containing franchisor information
+            prefect_run_id: Optional Prefect run ID for tracking
+            
+        Returns:
+            FranchisorCreate model or error dict
+        """
+        # Use Gemini as primary model for franchisor extraction
+        primary_model = ModelType.GEMINI
+        fallback_chain = self.get_fallback_chain(primary_model)
+        
+        # System prompt for franchisor extraction
+        system_prompt = """Extract franchisor information from this FDD document. 
+        Focus on identifying:
+        - Company name (canonical name)
+        - Parent company if mentioned
+        - Website, phone, email contact information  
+        - Business address (street, city, state, zip)
+        - Any DBA (doing business as) names
+        
+        Ensure addresses follow the format with state as 2-letter code (e.g., "KY" not "Kentucky").
+        Ensure zip codes are in the format XXXXX or XXXXX-XXXX."""
+        
+        # Use extraction monitoring
+        extraction_monitor = get_extraction_monitor()
+        extraction = extraction_monitor.start_extraction(
+            section_item=0,  # Using 0 for franchisor as it's not a numbered section
+            fdd_id=str(prefect_run_id) if prefect_run_id else "franchisor_extraction",
+            model=primary_model.value,
+        )
+        
+        await self.connection_pool.acquire()
+        try:
+            # Extract using primary model with fallback
+            result, model_used = await self.extract_with_fallback(
+                content=content,
+                response_model=FranchisorCreate,
+                system_prompt=system_prompt,
+                primary_model=primary_model.value,
+            )
+            
+            # Estimate tokens for monitoring
+            estimated_tokens = self.estimate_tokens(content, system_prompt)
+            extraction_monitor.set_success(tokens_used=estimated_tokens)
+            return result
+            
+        except Exception as e:
+            logger.error(
+                f"Franchisor extraction failed: {e}",
+                extra={
+                    "error_type": type(e).__name__,
+                    "prefect_run_id": str(prefect_run_id) if prefect_run_id else None,
+                }
+            )
+            # ExtractionMonitor doesn't have set_failed, just log the error
+            return {
+                "status": "failed",
+                "error": f"Franchisor extraction failed: {e}",
+                "error_type": type(e).__name__,
+                "attempted_at": datetime.utcnow().isoformat(),
+            }
+        finally:
+            self.connection_pool.release()
 
 
 class FDDSectionExtractor:

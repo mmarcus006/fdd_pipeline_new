@@ -16,7 +16,9 @@
       "WebFetch(domain:lusthausfranchiselaw.com)",
       "WebFetch(domain:python.useinstructor.com)",
       "Bash(mkdir:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(uv run pytest:*)"
     ]
   }
 }
