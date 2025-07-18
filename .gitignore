@@ -12,6 +12,7 @@ __pycache__/
 .LSOverride
 Icon
 ._*
+*_cred*
 
 # Distribution / packaging
 .Python
