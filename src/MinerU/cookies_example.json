@@ -1,0 +1,54 @@
+[
+    {
+        "domain": ".mineru.net",
+        "expirationDate": 1753451238.7552,
+        "hostOnly": false,
+        "httpOnly": false,
+        "name": "uaa-token",
+        "path": "/",
+        "sameSite": "no_restriction",
+        "secure": true,
+        "session": false,
+        "storeId": null,
+        "value": "eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI1MDE4MTc4NiIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc1Mjg0NjQ0MCwicGhvbmUiOiIiLCJlbWFpbCI6IiIsImV4cCI6MTc1MzQ1MTI0MH0.bHBUTwaoPKA4HkDOAV-xT7d3lustILQAwAl_PC-uRvEm0tvYR46SXU13URE9jSSCKJdKAqiTwomkES4pX9Wq9g"
+    },
+    {
+        "domain": ".mineru.net",
+        "expirationDate": 1753451238.755328,
+        "hostOnly": false,
+        "httpOnly": false,
+        "name": "ssouid",
+        "path": "/",
+        "sameSite": "no_restriction",
+        "secure": true,
+        "session": false,
+        "storeId": null,
+        "value": "50181786"
+    },
+    {
+        "domain": "mineru.net",
+        "expirationDate": 1752848209.31205,
+        "hostOnly": true,
+        "httpOnly": true,
+        "name": "acw_tc",
+        "path": "/",
+        "sameSite": null,
+        "secure": false,
+        "session": false,
+        "storeId": null,
+        "value": "7da6c56a-af13-4bc8-b1ef-b6fb08881640d2d6fff1deefa24427a2e10294b5c063"
+    },
+    {
+        "domain": ".mineru.net",
+        "expirationDate": 1753451238.7553,
+        "hostOnly": false,
+        "httpOnly": false,
+        "name": "opendatalab_session",
+        "path": "/",
+        "sameSite": "no_restriction",
+        "secure": true,
+        "session": false,
+        "storeId": null,
+        "value": "eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI1MDE4MTc4NiIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc1Mjg0NjQ0MCwicGhvbmUiOiIiLCJlbWFpbCI6IiIsImV4cCI6MTc1MzQ1MTI0MH0.bHBUTwaoPKA4HkDOAV-xT7d3lustILQAwAl_PC-uRvEm0tvYR46SXU13URE9jSSCKJdKAqiTwomkES4pX9Wq9g"
+    }
+]

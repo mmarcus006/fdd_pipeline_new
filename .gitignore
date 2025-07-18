@@ -186,3 +186,8 @@ mn_pagination_results.json
 .claude/
 claude-output/
 scratch/
+
+# MinerU Web API specific
+browser_profile/
+mineru_downloads/
+mineru_auth.json
