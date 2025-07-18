@@ -77,9 +77,7 @@ class Franchisor(FranchisorBase):
     """Complete franchisor model with DB fields."""
 
     id: UUID
-    name_embedding: Optional[List[float]] = Field(
-        None, description="384-dim vector"
-    )
+    name_embedding: Optional[List[float]] = Field(None, description="384-dim vector")
     created_at: datetime
     updated_at: datetime
 

@@ -198,7 +198,7 @@ class WisconsinScraper(BaseScraper):
             # Use the new generic table extraction method
             table_selector = "#ctl00_contentPlaceholder_grdActiveFilings"
             table_data = await self.extract_table_data(table_selector)
-            
+
             # Extract franchise names from the first column
             franchise_names = []
             if isinstance(table_data, list) and table_data:
@@ -214,29 +214,29 @@ class WisconsinScraper(BaseScraper):
                         name = clean_text(row)
                         if name:
                             franchise_names.append(name)
-            
+
             # If table extraction failed, fall back to direct HTML parsing
             if not franchise_names:
                 self.logger.debug("falling_back_to_html_parsing")
-                
+
                 # Wait for the table to load
                 await self.page.wait_for_selector(table_selector, timeout=self.timeout)
-                
+
                 # Extract table HTML
                 table_html = await self.page.evaluate(
                     f"document.querySelector('{table_selector}').outerHTML"
                 )
-                
+
                 if not table_html:
                     raise ElementNotFoundError("Failed to retrieve table HTML")
-                
+
                 # Use regex to find table rows and extract first cell content
                 rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table_html, re.DOTALL)
-                
+
                 for i, row in enumerate(rows):
                     if i == 0:  # Skip header row
                         continue
-                    
+
                     # Extract cells from row
                     cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
                     if cells:
@@ -253,8 +253,10 @@ class WisconsinScraper(BaseScraper):
 
         except Exception as e:
             self.logger.error("table_extraction_failed", error=str(e))
-            raise ElementNotFoundError(f"Failed to extract franchise names from table: {e}")
-    
+            raise ElementNotFoundError(
+                f"Failed to extract franchise names from table: {e}"
+            )
+
     # download_and_save_document method moved to tasks.document_metadata
     # Use: from tasks.document_metadata import download_and_save_document
 
@@ -332,7 +334,7 @@ class WisconsinScraper(BaseScraper):
             # Clear any existing search first
             search_input_selector = "#ctl00_contentPlaceholder_txtSearch"
             await self.clear_search_input(search_input_selector)
-            
+
             # Find and fill search input
             search_selectors = [
                 "#ctl00_contentPlaceholder_txtSearch",
@@ -610,6 +612,6 @@ class WisconsinScraper(BaseScraper):
         except Exception as e:
             self.logger.error("detailed_info_extraction_failed", error=str(e))
             return {}
-    
+
     # export_to_csv method moved to tasks.document_metadata
     # Use: from tasks.document_metadata import export_documents_to_csv

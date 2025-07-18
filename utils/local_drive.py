@@ -9,6 +9,7 @@ from datetime import datetime
 
 from tasks.drive_operations import DriveFileMetadata
 
+
 class LocalDriveManager:
     """A local version of the DriveManager that saves files to the filesystem."""
 
@@ -58,9 +59,11 @@ class LocalDriveManager:
 
         return file_id, metadata
 
+
 # Singleton instance
 local_drive_manager = LocalDriveManager()
 
+
 def get_local_drive_manager() -> LocalDriveManager:
     """Returns the singleton instance of the LocalDriveManager."""
-    return local_drive_manager 
+    return local_drive_manager

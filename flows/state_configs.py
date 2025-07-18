@@ -11,7 +11,7 @@ MINNESOTA_CONFIG = StateConfig(
     state_name="Minnesota",
     scraper_class=MinnesotaScraper,
     folder_name="Minnesota FDDs",
-    portal_name="CARDS"
+    portal_name="CARDS",
 )
 
 # Wisconsin configuration
@@ -20,7 +20,7 @@ WISCONSIN_CONFIG = StateConfig(
     state_name="Wisconsin",
     scraper_class=WisconsinScraper,
     folder_name="Wisconsin FDDs",
-    portal_name="DFI"
+    portal_name="DFI",
 )
 
 # All available state configurations
@@ -34,13 +34,13 @@ STATE_CONFIGS = {
 
 def get_state_config(state: str) -> StateConfig:
     """Get state configuration by name or code.
-    
+
     Args:
         state: State name or code (case-insensitive)
-        
+
     Returns:
         StateConfig for the requested state
-        
+
     Raises:
         ValueError: If state is not found
     """

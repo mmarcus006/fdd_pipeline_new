@@ -12,7 +12,7 @@ from .base_items import FeeFrequency, CalculationBasis, DiscountType, Validation
 from .item6_other_fees import Item6OtherFee, OtherFeeStructure, Item6OtherFeesResponse
 from .item7_investment import (
     InvestmentCategory,
-    Item7Investment, 
+    Item7Investment,
     InvestmentItem,
     Item7InvestmentResponse,
     InvestmentSummary,
@@ -25,7 +25,13 @@ from .item20_outlets import (
     OutletTable,
     Item20OutletsResponse,
 )
-from .item21_financials import AuditOpinion, StatementType, Financials, FinancialTable, Item21FinancialsResponse
+from .item21_financials import (
+    AuditOpinion,
+    StatementType,
+    Financials,
+    FinancialTable,
+    Item21FinancialsResponse,
+)
 
 # Operational models
 from .scrape_metadata import ScrapeMetadata, ScrapeMetadataBase
@@ -90,22 +96,22 @@ __all__ = [
     "ExtractionStatus",
     # Structured data models
     "Item5Fee",
-    "Item5FeesResponse", 
+    "Item5FeesResponse",
     "InitialFeeDiscount",
     "AdditionalFee",
     "FeeFrequency",
-    "CalculationBasis", 
+    "CalculationBasis",
     "DiscountType",
     "ValidationStatus",
     "Item6OtherFee",
-    "OtherFeeStructure", 
+    "OtherFeeStructure",
     "Item6OtherFeesResponse",
     "InvestmentCategory",
-    "Item7Investment", 
+    "Item7Investment",
     "InvestmentItem",
     "Item7InvestmentResponse",
     "InvestmentSummary",
-    "FPRTable", 
+    "FPRTable",
     "Item19FPR",
     "Item19FPRResponse",
     "OutletType",
@@ -114,7 +120,7 @@ __all__ = [
     "OutletTable",
     "Item20OutletsResponse",
     "AuditOpinion",
-    "StatementType", 
+    "StatementType",
     "Financials",
     "FinancialTable",
     "Item21FinancialsResponse",

@@ -217,8 +217,8 @@ class TestFDDSectionExtractor:
     ):
         """Test extraction error handling."""
         # Setup mock to raise error
-        section_extractor.extractor.extract_with_fallback.side_effect = WebScrapingException(
-            "Extraction failed"
+        section_extractor.extractor.extract_with_fallback.side_effect = (
+            WebScrapingException("Extraction failed")
         )
 
         # Test extraction

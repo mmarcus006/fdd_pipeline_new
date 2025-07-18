@@ -32,13 +32,17 @@ logger = get_logger(__name__)
 def create_state_deployment(state_code: str) -> Deployment:
     """Create a deployment for a specific state."""
     state_config = get_state_config(state_code)
-    
+
     # Define schedule based on state
     schedules = {
-        "MN": CronSchedule(cron="0 6 * * *", timezone="America/Chicago"),  # 6 AM CT daily
-        "WI": CronSchedule(cron="0 7 * * *", timezone="America/Chicago"),  # 7 AM CT daily
+        "MN": CronSchedule(
+            cron="0 6 * * *", timezone="America/Chicago"
+        ),  # 6 AM CT daily
+        "WI": CronSchedule(
+            cron="0 7 * * *", timezone="America/Chicago"
+        ),  # 7 AM CT daily
     }
-    
+
     deployment = scrape_state_flow.to_deployment(
         name=f"{state_config.state_name.lower()}-scrape",
         description=f"Scrape {state_config.state_name} {state_config.portal_name} portal for FDD documents",
@@ -46,18 +50,18 @@ def create_state_deployment(state_code: str) -> Deployment:
             "state-scraper",
             state_code.lower(),
             state_config.portal_name.lower(),
-            "production"
+            "production",
         ],
         schedule=schedules.get(state_code),
         parameters={
             "state_config": state_config.model_dump(),
             "download_documents": True,
-            "max_documents": None  # No limit in production
+            "max_documents": None,  # No limit in production
         },
         work_pool_name="default-agent-pool",
         version="2.0",  # Version 2.0 indicates base flow architecture
     )
-    
+
     logger.info(f"Created deployment for {state_config.state_name}")
     return deployment
 
@@ -65,56 +69,56 @@ def create_state_deployment(state_code: str) -> Deployment:
 def create_test_deployment(state_code: str) -> Deployment:
     """Create a test deployment with limited scraping."""
     state_config = get_state_config(state_code)
-    
+
     deployment = scrape_state_flow.to_deployment(
         name=f"{state_config.state_name.lower()}-test",
         description=f"Test deployment for {state_config.state_name} scraper",
-        tags=[
-            "state-scraper",
-            state_code.lower(),
-            "test"
-        ],
+        tags=["state-scraper", state_code.lower(), "test"],
         parameters={
             "state_config": state_config.model_dump(),
             "download_documents": False,  # Don't download in test mode
-            "max_documents": 5  # Limit to 5 documents for testing
+            "max_documents": 5,  # Limit to 5 documents for testing
         },
         work_pool_name="default-agent-pool",
         version="2.0-test",
     )
-    
+
     logger.info(f"Created test deployment for {state_config.state_name}")
     return deployment
 
 
 @click.command()
-@click.option('--state', type=click.Choice(['minnesota', 'wisconsin', 'all']), default='all')
-@click.option('--mode', type=click.Choice(['production', 'test', 'both']), default='production')
-@click.option('--serve-flows', is_flag=True, help='Start serving the deployed flows')
+@click.option(
+    "--state", type=click.Choice(["minnesota", "wisconsin", "all"]), default="all"
+)
+@click.option(
+    "--mode", type=click.Choice(["production", "test", "both"]), default="production"
+)
+@click.option("--serve-flows", is_flag=True, help="Start serving the deployed flows")
 async def deploy(state: str, mode: str, serve_flows: bool):
     """Deploy state scraping flows to Prefect."""
-    
+
     deployments = []
     states_to_deploy = []
-    
+
     # Determine which states to deploy
-    if state == 'all':
-        states_to_deploy = ['MN', 'WI']
-    elif state == 'minnesota':
-        states_to_deploy = ['MN']
-    elif state == 'wisconsin':
-        states_to_deploy = ['WI']
-    
+    if state == "all":
+        states_to_deploy = ["MN", "WI"]
+    elif state == "minnesota":
+        states_to_deploy = ["MN"]
+    elif state == "wisconsin":
+        states_to_deploy = ["WI"]
+
     # Create deployments based on mode
     for state_code in states_to_deploy:
-        if mode in ['production', 'both']:
+        if mode in ["production", "both"]:
             deployments.append(create_state_deployment(state_code))
-        
-        if mode in ['test', 'both']:
+
+        if mode in ["test", "both"]:
             deployments.append(create_test_deployment(state_code))
-    
+
     logger.info(f"Created {len(deployments)} deployments")
-    
+
     # Apply deployments
     for deployment in deployments:
         try:
@@ -122,7 +126,7 @@ async def deploy(state: str, mode: str, serve_flows: bool):
             logger.info(f"Applied deployment: {deployment.name} (ID: {deployment_id})")
         except Exception as e:
             logger.error(f"Failed to apply deployment {deployment.name}: {e}")
-    
+
     # Serve flows if requested
     if serve_flows and deployments:
         logger.info("Starting flow server...")
@@ -131,4 +135,5 @@ async def deploy(state: str, mode: str, serve_flows: bool):
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(deploy())

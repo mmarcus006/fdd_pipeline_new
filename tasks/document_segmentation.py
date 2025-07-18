@@ -708,6 +708,7 @@ def segment_fdd_document(
         drive_manager = None
         if use_local_drive:
             from utils.local_drive import get_local_drive_manager
+
             drive_manager = get_local_drive_manager()
 
         segmentation_system = DocumentSegmentationSystem(drive_manager=drive_manager)

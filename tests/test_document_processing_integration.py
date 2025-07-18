@@ -210,7 +210,7 @@ class TestProcessDocumentWithExtraction:
 
         # Mock all the dependencies
         with patch(
-            "tasks.document_processing_integration.process_document_layout"
+            "tests.test_document_processing.process_document_layout"
         ) as mock_process:
             mock_process.return_value = (mock_layout, mock_sections)
 
@@ -272,7 +272,7 @@ class TestProcessDocumentWithExtraction:
         fdd_id = UUID("12345678-1234-5678-1234-567812345678")
 
         with patch(
-            "tasks.document_processing_integration.process_document_layout"
+            "tests.test_document_processing.process_document_layout"
         ) as mock_process:
             mock_process.return_value = (mock_layout, mock_sections)
 
@@ -309,7 +309,7 @@ class TestProcessDocumentWithExtraction:
         fdd_id = UUID("12345678-1234-5678-1234-567812345678")
 
         with patch(
-            "tasks.document_processing_integration.process_document_layout"
+            "tests.test_document_processing.process_document_layout"
         ) as mock_process:
             mock_process.return_value = (mock_layout, mock_sections)
 

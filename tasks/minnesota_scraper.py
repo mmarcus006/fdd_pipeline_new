@@ -79,7 +79,7 @@ class MinnesotaScraper(BaseScraper):
                 ".load-more-button",
                 "button.load-more",
             ]
-            
+
             # Try to find the load more button with various selectors
             found_selector = None
             for selector in [load_more_selector] + alternative_selectors:
@@ -87,65 +87,73 @@ class MinnesotaScraper(BaseScraper):
                     button = await self.page.query_selector(selector)
                     if button and await button.is_visible():
                         found_selector = selector
-                        self.logger.debug(f"Found load more button with selector: {selector}")
+                        self.logger.debug(
+                            f"Found load more button with selector: {selector}"
+                        )
                         break
                 except:
                     continue
-            
+
             if found_selector:
                 # Handle pagination with Load More pattern
                 page_num = 1
                 max_pages = 20  # Reasonable limit
-                
+
                 while page_num < max_pages:
                     # Look for load more button
                     load_more_button = await self.page.query_selector(found_selector)
                     if not load_more_button:
-                        self.logger.info("no_more_pages_available", current_page=page_num)
+                        self.logger.info(
+                            "no_more_pages_available", current_page=page_num
+                        )
                         break
-                    
+
                     # Check if button is disabled
                     is_disabled = await load_more_button.get_attribute("disabled")
                     if is_disabled:
-                        self.logger.info("load_more_button_disabled", current_page=page_num)
+                        self.logger.info(
+                            "load_more_button_disabled", current_page=page_num
+                        )
                         break
-                    
+
                     # Get current document count
                     current_count = len(documents)
-                    
+
                     # Click load more
-                    self.logger.info("clicking_load_more_button", page_number=page_num + 1)
+                    self.logger.info(
+                        "clicking_load_more_button", page_number=page_num + 1
+                    )
                     await load_more_button.click()
-                    
+
                     # Wait for new content
                     await asyncio.sleep(2)
-                    
+
                     # Wait for new rows to appear
                     try:
                         await self.page.wait_for_function(
                             f"document.querySelectorAll('#results tr').length > {len(await self.page.query_selector_all('#results tr'))}",
-                            timeout=10000
+                            timeout=10000,
                         )
                     except:
                         self.logger.warning("timeout_waiting_for_new_content")
                         break
-                    
+
                     # Extract all documents from updated table
                     all_documents = await self._extract_cards_results()
-                    
+
                     # Only add new documents
                     new_documents = all_documents[current_count:]
                     if not new_documents:
                         self.logger.info("no_new_documents_loaded")
                         break
-                    
+
                     documents.extend(new_documents)
                     self.logger.info(
                         "new_documents_loaded",
                         count=len(new_documents),
-                        total=len(documents)
+                        total=len(documents),
                     )
-                    
+
                     page_num += 1
                     await asyncio.sleep(1)  # Be respectful between requests
 
@@ -908,12 +916,12 @@ class MinnesotaScraper(BaseScraper):
                     return int(size_val)
 
         return None
-    
+
     # download_and_save_document method moved to tasks.document_metadata
     # Use: from tasks.document_metadata import download_and_save_document
-    
+
     # process_all_with_downloads method moved to tasks.document_metadata
     # Use: from tasks.document_metadata import process_all_documents_with_downloads
-    
+
     # export_to_csv method moved to tasks.document_metadata
     # Use: from tasks.document_metadata import export_documents_to_csv

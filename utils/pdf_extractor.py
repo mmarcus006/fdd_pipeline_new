@@ -4,6 +4,7 @@ import PyPDF2
 from pathlib import Path
 from typing import Union
 
+
 def extract_text_from_pdf(pdf_path: Union[str, Path]) -> str:
     """
     Extracts text from all pages of a PDF file.
@@ -24,4 +25,4 @@ def extract_text_from_pdf(pdf_path: Union[str, Path]) -> str:
                     text += page_text + "\n"
     except Exception as e:
         print(f"Error extracting text from {pdf_path}: {e}")
-    return text 
+    return text

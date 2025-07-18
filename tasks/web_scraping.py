@@ -61,7 +61,7 @@ class DocumentMetadata(BaseModel):
 # Remove local exception classes - we'll use the ones from exceptions.py
 # ScrapingError -> WebScrapingException
 # NavigationError -> NavigationTimeoutError
-# ExtractionError -> ElementNotFoundError  
+# ExtractionError -> ElementNotFoundError
 # DownloadError -> DownloadFailedError
 
 
@@ -164,7 +164,7 @@ class BaseScraper(ABC):
             # Initialize HTTP client with enhanced headers
             headers = get_default_headers()
             headers["User-Agent"] = user_agent
-            
+
             self.http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(60.0),  # Increased timeout for large files
                 headers=headers,
@@ -178,13 +178,16 @@ class BaseScraper(ABC):
             self.logger.error(
                 "scraper_initialization_failed",
                 error=str(e),
-                correlation_id=self.correlation_id
+                correlation_id=self.correlation_id,
             )
             await self.cleanup()
             raise BrowserInitializationError(
                 f"Failed to initialize scraper: {e}",
                 correlation_id=self.correlation_id,
-                context={"source_name": self.source_name, "error_type": type(e).__name__}
+                context={
+                    "source_name": self.source_name,
+                    "error_type": type(e).__name__,
+                },
             )
 
     async def cleanup(self) -> None:
@@ -284,8 +287,8 @@ class BaseScraper(ABC):
             context={
                 "operation": operation_name,
                 "max_retries": self.max_retries,
-                "last_error_type": type(last_exception).__name__
-            }
+                "last_error_type": type(last_exception).__name__,
+            },
         )
 
     async def safe_navigate(self, url: str, wait_for: Optional[str] = None) -> None:
@@ -300,8 +303,7 @@ class BaseScraper(ABC):
         """
         if not self.page:
             raise NavigationTimeoutError(
-                "Page not initialized",
-                correlation_id=self.correlation_id
+                "Page not initialized", correlation_id=self.correlation_id
             )
 
         try:
@@ -319,19 +321,19 @@ class BaseScraper(ABC):
                 "navigation_failed",
                 url=url,
                 error=str(e),
-                correlation_id=self.correlation_id
+                correlation_id=self.correlation_id,
             )
             if "timeout" in str(e).lower():
                 raise NavigationTimeoutError(
                     f"Navigation timeout for {url}: {e}",
                     correlation_id=self.correlation_id,
-                    context={"url": url, "timeout": self.timeout}
+                    context={"url": url, "timeout": self.timeout},
                 )
             else:
                 raise WebScrapingException(
                     f"Failed to navigate to {url}: {e}",
                     correlation_id=self.correlation_id,
-                    context={"url": url, "error_type": type(e).__name__}
+                    context={"url": url, "error_type": type(e).__name__},
                 )
 
     async def safe_click(self, selector: str, timeout: Optional[int] = None) -> None:
@@ -346,8 +348,7 @@ class BaseScraper(ABC):
         """
         if not self.page:
             raise ElementNotFoundError(
-                "Page not initialized",
-                correlation_id=self.correlation_id
+                "Page not initialized", correlation_id=self.correlation_id
             )
 
         try:
@@ -358,7 +359,7 @@ class BaseScraper(ABC):
                 raise ElementNotFoundError(
                     f"Element not found: {selector}",
                     correlation_id=self.correlation_id,
-                    context={"selector": selector}
+                    context={"selector": selector},
                 )
 
             await element.click()
@@ -369,19 +370,19 @@ class BaseScraper(ABC):
                 "click_failed",
                 selector=selector,
                 error=str(e),
-                correlation_id=self.correlation_id
+                correlation_id=self.correlation_id,
             )
             if "timeout" in str(e).lower():
                 raise NavigationTimeoutError(
                     f"Timeout waiting for element {selector}: {e}",
                     correlation_id=self.correlation_id,
-                    context={"selector": selector, "timeout": timeout or self.timeout}
+                    context={"selector": selector, "timeout": timeout or self.timeout},
                 )
             else:
                 raise ElementNotFoundError(
                     f"Failed to click {selector}: {e}",
                     correlation_id=self.correlation_id,
-                    context={"selector": selector, "error_type": type(e).__name__}
+                    context={"selector": selector, "error_type": type(e).__name__},
                 )
 
     async def safe_fill(
@@ -399,8 +400,7 @@ class BaseScraper(ABC):
         """
         if not self.page:
             raise ElementNotFoundError(
-                "Page not initialized",
-                correlation_id=self.correlation_id
+                "Page not initialized", correlation_id=self.correlation_id
             )
 
         try:
@@ -411,7 +411,7 @@ class BaseScraper(ABC):
                 raise ElementNotFoundError(
                     f"Element not found: {selector}",
                     correlation_id=self.correlation_id,
-                    context={"selector": selector}
+                    context={"selector": selector},
                 )
 
             await element.fill(value)
@@ -424,19 +424,19 @@ class BaseScraper(ABC):
                 "fill_failed",
                 selector=selector,
                 error=str(e),
-                correlation_id=self.correlation_id
+                correlation_id=self.correlation_id,
             )
             if "timeout" in str(e).lower():
                 raise NavigationTimeoutError(
                     f"Timeout waiting for element {selector}: {e}",
                     correlation_id=self.correlation_id,
-                    context={"selector": selector, "timeout": timeout or self.timeout}
+                    context={"selector": selector, "timeout": timeout or self.timeout},
                 )
             else:
                 raise ElementNotFoundError(
                     f"Failed to fill {selector}: {e}",
                     correlation_id=self.correlation_id,
-                    context={"selector": selector, "error_type": type(e).__name__}
+                    context={"selector": selector, "error_type": type(e).__name__},
                 )
 
     async def download_document(
@@ -456,12 +456,13 @@ class BaseScraper(ABC):
         """
         if not self.http_client:
             raise DownloadFailedError(
-                "HTTP client not initialized",
-                correlation_id=self.correlation_id
+                "HTTP client not initialized", correlation_id=self.correlation_id
             )
 
         async def _download():
-            self.logger.debug("downloading_document", url=url, correlation_id=self.correlation_id)
+            self.logger.debug(
+                "downloading_document", url=url, correlation_id=self.correlation_id
+            )
 
             try:
                 response = await self.http_client.get(url)
@@ -470,33 +471,33 @@ class BaseScraper(ABC):
                 if e.response.status_code == 429:
                     raise RateLimitError(
                         f"Rate limited while downloading: {e}",
-                        retry_after=int(e.response.headers.get('Retry-After', 60)),
+                        retry_after=int(e.response.headers.get("Retry-After", 60)),
                         correlation_id=self.correlation_id,
-                        context={"url": url, "status_code": e.response.status_code}
+                        context={"url": url, "status_code": e.response.status_code},
                     )
                 elif e.response.status_code >= 500:
                     raise RetryableError(
                         f"Server error while downloading: {e}",
                         correlation_id=self.correlation_id,
-                        context={"url": url, "status_code": e.response.status_code}
+                        context={"url": url, "status_code": e.response.status_code},
                     )
                 else:
                     raise DownloadFailedError(
                         f"HTTP error while downloading: {e}",
                         correlation_id=self.correlation_id,
-                        context={"url": url, "status_code": e.response.status_code}
+                        context={"url": url, "status_code": e.response.status_code},
                     )
             except httpx.TimeoutException as e:
                 raise DownloadFailedError(
                     f"Download timeout: {e}",
                     correlation_id=self.correlation_id,
-                    context={"url": url, "timeout": self.http_client.timeout}
+                    context={"url": url, "timeout": self.http_client.timeout},
                 )
             except Exception as e:
                 raise DownloadFailedError(
                     f"Download failed: {e}",
                     correlation_id=self.correlation_id,
-                    context={"url": url, "error_type": type(e).__name__}
+                    context={"url": url, "error_type": type(e).__name__},
                 )
 
             content = response.content
@@ -506,15 +507,15 @@ class BaseScraper(ABC):
                 raise DownloadFailedError(
                     "Downloaded content is empty",
                     correlation_id=self.correlation_id,
-                    context={"url": url}
+                    context={"url": url},
                 )
 
             if expected_size and len(content) != expected_size:
                 self.logger.warning(
-                    "size_mismatch", 
-                    expected=expected_size, 
+                    "size_mismatch",
+                    expected=expected_size,
                     actual=len(content),
-                    correlation_id=self.correlation_id
+                    correlation_id=self.correlation_id,
                 )
 
             # Validate PDF header
@@ -522,7 +523,10 @@ class BaseScraper(ABC):
                 raise DownloadFailedError(
                     "Downloaded content is not a valid PDF",
                     correlation_id=self.correlation_id,
-                    context={"url": url, "content_preview": content[:20].hex() if content else "empty"}
+                    context={
+                        "url": url,
+                        "content_preview": content[:20].hex() if content else "empty",
+                    },
                 )
 
             self.logger.info(
@@ -530,7 +534,7 @@ class BaseScraper(ABC):
                 url=url,
                 size=len(content),
                 sha256=hashlib.sha256(content).hexdigest()[:16],
-                correlation_id=self.correlation_id
+                correlation_id=self.correlation_id,
             )
 
             return content
@@ -547,139 +551,127 @@ class BaseScraper(ABC):
             SHA256 hash as hex string
         """
         return hashlib.sha256(content).hexdigest()
-    
+
     async def download_file_streaming(
-        self, 
-        url: str, 
+        self,
+        url: str,
         filepath: Path,
         chunk_size: int = 8192,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
     ) -> bool:
         """Download file with streaming and progress tracking.
-        
+
         Args:
             url: URL to download from
             filepath: Path to save file
             chunk_size: Size of chunks to download
             progress_callback: Optional callback for progress updates
-            
+
         Returns:
             True if download successful
-            
+
         Raises:
             DownloadFailedError: If download fails
         """
         try:
             # Ensure directory exists
             filepath.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Check if file already exists
             if filepath.exists():
                 self.logger.info("file_already_exists", filepath=str(filepath))
                 return True
-            
+
             async def _download():
                 async with self.http_client.stream("GET", url) as response:
                     response.raise_for_status()
-                    
+
                     # Get total size if available
                     total_size = int(response.headers.get("content-length", 0))
                     downloaded = 0
-                    
+
                     # Download with progress tracking
                     with open(filepath, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size):
                             f.write(chunk)
                             downloaded += len(chunk)
-                            
+
                             if progress_callback and total_size:
                                 progress_callback(downloaded, total_size)
-                    
+
                     self.logger.info(
                         "file_downloaded_streaming",
                         url=url,
                         filepath=str(filepath),
-                        size=downloaded
+                        size=downloaded,
                     )
-                    
+
                 return True
-            
+
             return await self.retry_with_backoff(_download, "streaming_download")
-            
+
         except Exception as e:
-            self.logger.error(
-                "streaming_download_failed",
-                url=url,
-                error=str(e)
-            )
+            self.logger.error("streaming_download_failed", url=url, error=str(e))
             raise DownloadFailedError(
                 f"Streaming download failed: {e}",
                 correlation_id=self.correlation_id,
-                context={"url": url, "filepath": str(filepath)}
+                context={"url": url, "filepath": str(filepath)},
             )
-    
+
     async def manage_cookies(self) -> Dict[str, str]:
         """Extract and manage cookies between Playwright and HTTP client.
-        
+
         Returns:
             Dictionary of cookies
         """
         if not self.context:
             return {}
-        
+
         try:
             # Get cookies from browser context
             cookies = await self.context.cookies()
-            
+
             # Convert to dict format for HTTP client
             cookie_dict = {}
             for cookie in cookies:
                 cookie_dict[cookie["name"]] = cookie["value"]
-            
+
             # Update HTTP client cookies
             if self.http_client:
                 self.http_client.cookies.update(cookie_dict)
-            
-            self.logger.debug(
-                "cookies_synced",
-                cookie_count=len(cookie_dict)
-            )
-            
+
+            self.logger.debug("cookies_synced", cookie_count=len(cookie_dict))
+
             return cookie_dict
-            
+
         except Exception as e:
-            self.logger.warning(
-                "cookie_sync_failed",
-                error=str(e)
-            )
+            self.logger.warning("cookie_sync_failed", error=str(e))
             return {}
-    
+
     async def extract_table_data(
-        self, 
-        table_selector: str,
-        header_row_index: int = 0
+        self, table_selector: str, header_row_index: int = 0
     ) -> List[Dict[str, str]]:
         """Generic table data extraction.
-        
+
         Args:
             table_selector: CSS selector for table
             header_row_index: Index of header row
-            
+
         Returns:
             List of dictionaries with table data
         """
         if not self.page:
             raise ElementNotFoundError(
-                "Page not initialized",
-                correlation_id=self.correlation_id
+                "Page not initialized", correlation_id=self.correlation_id
             )
-        
+
         try:
             # Wait for table
             await self.page.wait_for_selector(table_selector, timeout=self.timeout)
-            
+
             # Extract table data
-            table_data = await self.page.evaluate("""
+            table_data = await self.page.evaluate(
+                """
                 (selector, headerIndex) => {
                     const table = document.querySelector(selector);
                     if (!table) return [];
@@ -712,135 +704,123 @@ class BaseScraper(ABC):
                     
                     return data;
                 }
-            """, table_selector, header_row_index)
-            
+            """,
+                table_selector,
+                header_row_index,
+            )
+
             self.logger.debug(
                 "table_data_extracted",
                 selector=table_selector,
-                row_count=len(table_data)
+                row_count=len(table_data),
             )
-            
+
             return table_data
-            
+
         except Exception as e:
             self.logger.error(
-                "table_extraction_failed",
-                selector=table_selector,
-                error=str(e)
+                "table_extraction_failed", selector=table_selector, error=str(e)
             )
             raise ElementNotFoundError(
                 f"Failed to extract table data: {e}",
                 correlation_id=self.correlation_id,
-                context={"selector": table_selector}
+                context={"selector": table_selector},
             )
-    
+
     async def handle_pagination(
         self,
         next_button_selector: str,
         content_selector: str,
-        max_pages: Optional[int] = None
+        max_pages: Optional[int] = None,
     ) -> AsyncIterator[Page]:
         """Generic pagination handler.
-        
+
         Args:
             next_button_selector: Selector for next/load more button
             content_selector: Selector to wait for after pagination
             max_pages: Maximum number of pages to process
-            
+
         Yields:
             Page object after each pagination
         """
         if not self.page:
             raise ElementNotFoundError(
-                "Page not initialized",
-                correlation_id=self.correlation_id
+                "Page not initialized", correlation_id=self.correlation_id
             )
-        
+
         page_count = 1
-        
+
         while True:
             # Yield current page
             yield self.page
-            
+
             # Check page limit
             if max_pages and page_count >= max_pages:
-                self.logger.info(
-                    "pagination_limit_reached",
-                    max_pages=max_pages
-                )
+                self.logger.info("pagination_limit_reached", max_pages=max_pages)
                 break
-            
+
             try:
                 # Look for next button
                 next_button = await self.page.query_selector(next_button_selector)
                 if not next_button:
                     self.logger.info("no_more_pages")
                     break
-                
+
                 # Check if button is disabled
                 is_disabled = await next_button.get_attribute("disabled")
                 if is_disabled:
                     self.logger.info("next_button_disabled")
                     break
-                
+
                 # Get current content count for comparison
-                current_count = len(await self.page.query_selector_all(content_selector))
-                
+                current_count = len(
+                    await self.page.query_selector_all(content_selector)
+                )
+
                 # Click next button
                 await next_button.click()
-                
+
                 # Wait for new content
                 await self.page.wait_for_function(
                     f"document.querySelectorAll('{content_selector}').length > {current_count}",
-                    timeout=10000
+                    timeout=10000,
                 )
-                
+
                 # Additional wait for stability
                 await asyncio.sleep(1)
-                
+
                 page_count += 1
-                self.logger.debug(
-                    "pagination_advanced",
-                    page=page_count
-                )
-                
+                self.logger.debug("pagination_advanced", page=page_count)
+
             except Exception as e:
-                self.logger.warning(
-                    "pagination_ended",
-                    page=page_count,
-                    reason=str(e)
-                )
+                self.logger.warning("pagination_ended", page=page_count, reason=str(e))
                 break
-    
+
     async def clear_search_input(self, selector: str) -> None:
         """Clear a search input field.
-        
+
         Args:
             selector: CSS selector for input field
         """
         if not self.page:
             return
-        
+
         try:
             input_element = await self.page.query_selector(selector)
             if input_element:
                 # Triple-click to select all and then delete
                 await input_element.click(click_count=3)
                 await self.page.keyboard.press("Delete")
-                
+
                 # Alternative: Clear using JavaScript
                 await self.page.evaluate(
                     f"document.querySelector('{selector}').value = ''"
                 )
-                
+
                 self.logger.debug("search_input_cleared", selector=selector)
-                
+
         except Exception as e:
-            self.logger.warning(
-                "clear_input_failed",
-                selector=selector,
-                error=str(e)
-            )
+            self.logger.warning("clear_input_failed", selector=selector, error=str(e))
 
     @abstractmethod
     async def discover_documents(self) -> List[DocumentMetadata]:
@@ -943,8 +923,10 @@ class BaseScraper(ABC):
                 context={
                     "source_name": self.source_name,
                     "error_type": type(e).__name__,
-                    "documents_discovered": len(documents) if 'documents' in locals() else 0
-                }
+                    "documents_discovered": (
+                        len(documents) if "documents" in locals() else 0
+                    ),
+                },
             )
 
 
@@ -959,7 +941,7 @@ async def create_scraper(scraper_class, *args, **kwargs):
 
     Yields:
         Initialized scraper instance
-        
+
     Raises:
         BrowserInitializationError: If browser fails to start
         WebScrapingException: If scraper initialization fails
@@ -975,11 +957,11 @@ async def create_scraper(scraper_class, *args, **kwargs):
         # Wrap other errors with context
         raise WebScrapingException(
             f"Scraper context manager failed: {e}",
-            correlation_id=getattr(scraper, 'correlation_id', None),
+            correlation_id=getattr(scraper, "correlation_id", None),
             context={
                 "scraper_class": scraper_class.__name__,
-                "error_type": type(e).__name__
-            }
+                "error_type": type(e).__name__,
+            },
         )
     finally:
         await scraper.cleanup()

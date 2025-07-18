@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 class DocumentStatus(str, Enum):
     """Document status for lineage tracking."""
+
     ACTIVE = "active"
     SUPERSEDED = "superseded"
     DUPLICATE = "duplicate"
@@ -29,6 +30,7 @@ class DocumentStatus(str, Enum):
 
 class LineageAction(str, Enum):
     """Types of lineage actions for audit trail."""
+
     CREATED = "created"
     SUPERSEDED = "superseded"
     MARKED_DUPLICATE = "marked_duplicate"
@@ -40,6 +42,7 @@ class LineageAction(str, Enum):
 @dataclass
 class LineageEvent:
     """Represents a lineage event for audit trail."""
+
     fdd_id: UUID
     action: LineageAction
     related_fdd

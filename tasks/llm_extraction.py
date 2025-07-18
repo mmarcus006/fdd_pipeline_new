@@ -299,7 +299,9 @@ class LLMExtractor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((LLMExtractionException, ValidationError, RetryableError)),
+        retry=retry_if_exception_type(
+            (LLMExtractionException, ValidationError, RetryableError)
+        ),
     )
     async def extract_with_gemini(
         self,
@@ -317,7 +319,7 @@ class LLMExtractor:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content},
             ]
-            
+
             response = await self.gemini_client.create(
                 response_model=response_model,
                 messages=messages,
@@ -333,7 +335,9 @@ class LLMExtractor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((LLMExtractionException, ValidationError, RetryableError)),
+        retry=retry_if_exception_type(
+            (LLMExtractionException, ValidationError, RetryableError)
+        ),
     )
     async def extract_with_ollama(
         self,
@@ -369,7 +373,9 @@ class LLMExtractor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((LLMExtractionException, ValidationError, RetryableError)),
+        retry=retry_if_exception_type(
+            (LLMExtractionException, ValidationError, RetryableError)
+        ),
     )
     async def extract_with_openai(
         self,
@@ -463,18 +469,18 @@ class LLMExtractor:
     ) -> Union[FranchisorCreate, dict]:
         """
         Extract franchisor information from FDD content.
-        
+
         Args:
             content: Text content containing franchisor information
             prefect_run_id: Optional Prefect run ID for tracking
-            
+
         Returns:
             FranchisorCreate model or error dict
         """
         # Use Gemini as primary model for franchisor extraction
         primary_model = ModelType.GEMINI
         fallback_chain = self.get_fallback_chain(primary_model)
-        
+
         # System prompt for franchisor extraction
         system_prompt = """Extract franchisor information from this FDD document. 
         Focus on identifying:
@@ -486,7 +492,7 @@ class LLMExtractor:
         
         Ensure addresses follow the format with state as 2-letter code (e.g., "KY" not "Kentucky").
         Ensure zip codes are in the format XXXXX or XXXXX-XXXX."""
-        
+
         # Use extraction monitoring
         extraction_monitor = get_extraction_monitor()
         extraction = extraction_monitor.start_extraction(
@@ -494,7 +500,7 @@ class LLMExtractor:
             fdd_id=str(prefect_run_id) if prefect_run_id else "franchisor_extraction",
             model=primary_model.value,
         )
-        
+
         await self.connection_pool.acquire()
         try:
             # Extract using primary model with fallback
@@ -504,19 +510,19 @@ class LLMExtractor:
                 system_prompt=system_prompt,
                 primary_model=primary_model.value,
             )
-            
+
             # Estimate tokens for monitoring
             estimated_tokens = self.estimate_tokens(content, system_prompt)
             extraction_monitor.set_success(tokens_used=estimated_tokens)
             return result
-            
+
         except Exception as e:
             logger.error(
                 f"Franchisor extraction failed: {e}",
                 extra={
                     "error_type": type(e).__name__,
                     "prefect_run_id": str(prefect_run_id) if prefect_run_id else None,
-                }
+                },
             )
             # ExtractionMonitor doesn't have set_failed, just log the error
             return {
@@ -593,8 +599,8 @@ class FDDSectionExtractor:
                         "section_item": section.item_no,
                         "fdd_id": str(section.fdd_id),
                         "error_type": type(e).__name__,
-                        "correlation_id": getattr(e, 'correlation_id', None)
-                    }
+                        "correlation_id": getattr(e, "correlation_id", None),
+                    },
                 )
                 extraction_monitor.set_failed(str(e))
                 return {
@@ -609,8 +615,8 @@ class FDDSectionExtractor:
                     extra={
                         "section_item": section.item_no,
                         "fdd_id": str(section.fdd_id),
-                        "error_type": type(e).__name__
-                    }
+                        "error_type": type(e).__name__,
+                    },
                 )
                 extraction_monitor.set_failed(str(e))
                 return {
@@ -682,13 +688,13 @@ async def extract_fdd_document(
                 extra={
                     "fdd_id": str(fdd.id),
                     "item_no": item_no,
-                    "error_type": type(e).__name__
-                }
+                    "error_type": type(e).__name__,
+                },
             )
             results[f"item_{item_no}"] = {
                 "status": "failed",
                 "error": str(e),
-                "error_type": type(e).__name__
+                "error_type": type(e).__name__,
             }
 
     # Log extraction summary

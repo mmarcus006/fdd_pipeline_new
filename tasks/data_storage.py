@@ -68,82 +68,82 @@ async def store_extraction_results(
                             logger.warning(f"No table mapping for item {item_number}")
                             continue
                     
-                    # Check if extraction was successful
-                    if result.get("status") == "success" and result.get("data"):
-                        # Prepare data for storage
-                        data = result["data"]
-                        if isinstance(data, dict):
-                            # Add FDD reference and metadata
-                            data["fdd_id"] = str(fdd_id)
-                            data["created_at"] = datetime.utcnow()
-                            data["updated_at"] = datetime.utcnow()
-                            
-                            # Serialize for database
-                            try:
-                                serialized_data = serialize_for_db(data)
-                            except Exception as e:
-                                raise DataSerializationError(
-                                    f"Failed to serialize data for item {item_number}: {e}",
-                                    correlation_id=correlation_id,
-                                    context={
-                                        "item_number": item_number,
-                                        "fdd_id": str(fdd_id),
-                                        "data_keys": list(data.keys()) if isinstance(data, dict) else None
-                                    }
+                        # Check if extraction was successful
+                        if result.get("status") == "success" and result.get("data"):
+                            # Prepare data for storage
+                            data = result["data"]
+                            if isinstance(data, dict):
+                                # Add FDD reference and metadata
+                                data["fdd_id"] = str(fdd_id)
+                                data["created_at"] = datetime.utcnow()
+                                data["updated_at"] = datetime.utcnow()
+                                
+                                # Serialize for database
+                                try:
+                                    serialized_data = serialize_for_db(data)
+                                except Exception as e:
+                                    raise DataSerializationError(
+                                        f"Failed to serialize data for item {item_number}: {e}",
+                                        correlation_id=correlation_id,
+                                        context={
+                                            "item_number": item_number,
+                                            "fdd_id": str(fdd_id),
+                                            "data_keys": list(data.keys()) if isinstance(data, dict) else None
+                                        }
+                                    )
+                                
+                                # Store in appropriate table
+                                try:
+                                    await db_manager.batch.batch_upsert(
+                                        table_name,
+                                        [serialized_data],
+                                        conflict_columns=['fdd_id']  # Update if exists
+                                    )
+                                except Exception as batch_error:
+                                    raise BatchOperationError(
+                                        f"Failed to upsert data for item {item_number}: {batch_error}",
+                                        correlation_id=correlation_id,
+                                        context={
+                                            "table_name": table_name,
+                                            "item_number": item_number,
+                                            "fdd_id": str(fdd_id)
+                                        }
+                                    )
+                                
+                                stored_items.append(item_number)
+                                
+                                # Update section status
+                                await update_section_status(
+                                    db_manager,
+                                    fdd_id,
+                                    item_number,
+                                    ExtractionStatus.COMPLETED,
+                                    result.get("token_usage", {}),
+                                    correlation_id=correlation_id
                                 )
-                            
-                            # Store in appropriate table
-                            try:
-                                await db_manager.batch.batch_upsert(
-                                    table_name,
-                                    [serialized_data],
-                                    conflict_columns=['fdd_id']  # Update if exists
+                            else:
+                                error_msg = f"Invalid data format for item {item_number}: expected dict, got {type(data).__name__}"
+                                logger.error(error_msg)
+                                failed_items.append(item_number)
+                                pipeline_logger.error(
+                                    "invalid_data_format",
+                                    fdd_id=str(fdd_id),
+                                    item_number=item_number,
+                                    data_type=type(data).__name__,
+                                    correlation_id=correlation_id
                                 )
-                            except Exception as batch_error:
-                                raise BatchOperationError(
-                                    f"Failed to upsert data for item {item_number}: {batch_error}",
-                                    correlation_id=correlation_id,
-                                    context={
-                                        "table_name": table_name,
-                                        "item_number": item_number,
-                                        "fdd_id": str(fdd_id)
-                                    }
-                                )
-                            
-                            stored_items.append(item_number)
-                            
-                            # Update section status
+                        else:
+                            # Extraction failed
+                            failed_items.append(item_number)
                             await update_section_status(
                                 db_manager,
                                 fdd_id,
                                 item_number,
-                                ExtractionStatus.COMPLETED,
-                                result.get("token_usage", {}),
+                                ExtractionStatus.FAILED,
+                                error=result.get("error", "Unknown error"),
                                 correlation_id=correlation_id
                             )
-                        else:
-                            error_msg = f"Invalid data format for item {item_number}: expected dict, got {type(data).__name__}"
-                            logger.error(error_msg)
-                            failed_items.append(item_number)
-                            pipeline_logger.error(
-                                "invalid_data_format",
-                                fdd_id=str(fdd_id),
-                                item_number=item_number,
-                                data_type=type(data).__name__,
-                                correlation_id=correlation_id
-                            )
-                    else:
-                        # Extraction failed
-                        failed_items.append(item_number)
-                        await update_section_status(
-                            db_manager,
-                            fdd_id,
-                            item_number,
-                            ExtractionStatus.FAILED,
-                            error=result.get("error", "Unknown error"),
-                            correlation_id=correlation_id
-                        )
-                        
+                            
                     except (DataSerializationError, BatchOperationError) as e:
                         # These are already logged with context, just re-raise
                         failed_items.append(item_number)
@@ -160,8 +160,8 @@ async def store_extraction_results(
                             correlation_id=correlation_id
                         )
         
-        # Prepare results
-        results = {
+    # Prepare results
+    results = {
             "fdd_id": str(fdd_id),
             "stored_items": stored_items,
             "failed_items": failed_items,
@@ -181,15 +181,15 @@ async def store_extraction_results(
         
         return results
         
-        except DatabaseConnectionError:
-            # Re-raise database connection errors for retry at task level
-            raise
-        except Exception as db_error:
-            raise DatabaseConnectionError(
-                f"Database connection failed during storage: {db_error}",
-                correlation_id=correlation_id,
-                context={"fdd_id": str(fdd_id)}
-            )
+    except DatabaseConnectionError:
+        # Re-raise database connection errors for retry at task level
+        raise
+    except Exception as db_error:
+        raise DatabaseConnectionError(
+            f"Database connection failed during storage: {db_error}",
+            correlation_id=correlation_id,
+            context={"fdd_id": str(fdd_id)}
+        )
     
     except (DataStorageException, DatabaseConnectionError) as e:
         # These are already properly formatted, just log and re-raise
@@ -306,9 +306,9 @@ async def store_validation_results(
                 "errors_stored": len(validation_results.get("errors", []))
             }
             
-    except BatchOperationError:
+        except BatchOperationError:
         raise
-    except Exception as e:
+        except Exception as e:
         logger.error(f"Failed to store validation results: {e}")
         raise DataStorageException(
             f"Unexpected error storing validation results: {e}",

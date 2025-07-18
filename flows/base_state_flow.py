@@ -20,14 +20,14 @@ from utils.logging import PipelineLogger
 
 class StateConfig:
     """Configuration for a specific state's scraping flow."""
-    
+
     def __init__(
         self,
         state_code: str,
         state_name: str,
         scraper_class: Type[BaseScraper],
         folder_name: str,
-        portal_name: str
+        portal_name: str,
     ):
         self.state_code = state_code
         self.state_name = state_name
@@ -38,8 +38,7 @@ class StateConfig:
 
 @task(name="scrape_state_portal", retries=3, retry_delay_seconds=60)
 async def scrape_state_portal(
-    state_config: StateConfig,
-    prefect_run_id: UUID
+    state_config: StateConfig, prefect_run_id: UUID
 ) -> List[DocumentMetadata]:
     """Scrape a state portal for FDD documents.
 
@@ -55,21 +54,21 @@ async def scrape_state_portal(
     """
     logger = get_run_logger()
     pipeline_logger = PipelineLogger(
-        f"scrape_{state_config.state_code.lower()}", 
-        prefect_run_id=str(prefect_run_id)
+        f"scrape_{state_config.state_code.lower()}", prefect_run_id=str(prefect_run_id)
     )
 
     try:
-        logger.info(f"Starting {state_config.state_name} {state_config.portal_name} portal scraping")
+        logger.info(
+            f"Starting {state_config.state_name} {state_config.portal_name} portal scraping"
+        )
         pipeline_logger.info(
-            f"{state_config.state_code.lower()}_scraping_started", 
-            run_id=str(prefect_run_id)
+            f"{state_config.state_code.lower()}_scraping_started",
+            run_id=str(prefect_run_id),
         )
 
         # Create and run scraper
         async with create_scraper(
-            state_config.scraper_class, 
-            prefect_run_id=prefect_run_id
+            state_config.scraper_class, prefect_run_id=prefect_run_id
         ) as scraper:
             documents = await scraper.scrape_portal()
 
@@ -88,9 +87,9 @@ async def scrape_state_portal(
     except Exception as e:
         logger.error(f"{state_config.state_name} scraping failed: {e}")
         pipeline_logger.error(
-            f"{state_config.state_code.lower()}_scraping_failed", 
-            error=str(e), 
-            run_id=str(prefect_run_id)
+            f"{state_config.state_code.lower()}_scraping_failed",
+            error=str(e),
+            run_id=str(prefect_run_id),
         )
         raise WebScrapingException(
             f"{state_config.state_name} portal scraping failed: {e}"
@@ -99,9 +98,7 @@ async def scrape_state_portal(
 
 @task(name="process_state_documents", retries=2)
 async def process_state_documents(
-    documents: List[DocumentMetadata],
-    state_config: StateConfig,
-    prefect_run_id: UUID
+    documents: List[DocumentMetadata], state_config: StateConfig, prefect_run_id: UUID
 ) -> List[ScrapeMetadata]:
     """Process discovered documents and store metadata.
 
@@ -115,8 +112,8 @@ async def process_state_documents(
     """
     logger = get_run_logger()
     pipeline_logger = PipelineLogger(
-        f"process_{state_config.state_code.lower()}_docs", 
-        prefect_run_id=str(prefect_run_id)
+        f"process_{state_config.state_code.lower()}_docs",
+        prefect_run_id=str(prefect_run_id),
     )
 
     try:
@@ -192,18 +189,16 @@ async def process_state_documents(
     except Exception as e:
         logger.error(f"{state_config.state_name} document processing failed: {e}")
         pipeline_logger.error(
-            f"{state_config.state_code.lower()}_processing_failed", 
-            error=str(e), 
-            run_id=str(prefect_run_id)
+            f"{state_config.state_code.lower()}_processing_failed",
+            error=str(e),
+            run_id=str(prefect_run_id),
         )
         raise
 
 
 @task(name="download_state_documents", retries=3)
 async def download_state_documents(
-    metadata_list: List[ScrapeMetadata],
-    state_config: StateConfig,
-    prefect_run_id: UUID
+    metadata_list: List[ScrapeMetadata], state_config: StateConfig, prefect_run_id: UUID
 ) -> List[str]:
     """Download FDD documents and store in Google Drive.
 
@@ -217,8 +212,8 @@ async def download_state_documents(
     """
     logger = get_run_logger()
     pipeline_logger = PipelineLogger(
-        f"download_{state_config.state_code.lower()}_docs", 
-        prefect_run_id=str(prefect_run_id)
+        f"download_{state_config.state_code.lower()}_docs",
+        prefect_run_id=str(prefect_run_id),
     )
 
     try:
@@ -235,8 +230,7 @@ async def download_state_documents(
 
         # Create scraper for downloading
         async with create_scraper(
-            state_config.scraper_class, 
-            prefect_run_id=prefect_run_id
+            state_config.scraper_class, prefect_run_id=prefect_run_id
         ) as scraper:
             for i, metadata in enumerate(metadata_list):
                 try:
@@ -263,10 +257,9 @@ async def download_state_documents(
                     async with get_database_manager() as db_manager:
                         # Check for duplicates in database
                         existing_fdd = await db_manager.get_records_by_filter(
-                            "fdds",
-                            {"sha256_hash": doc_hash}
+                            "fdds", {"sha256_hash": doc_hash}
                         )
-                        
+
                         if existing_fdd:
                             logger.info(
                                 f"Document already exists in database (hash: {doc_hash[:16]})"
@@ -278,17 +271,16 @@ async def download_state_documents(
                                 {
                                     "fdd_id": str(existing_fdd[0]["id"]),
                                     "scrape_status": "skipped",
-                                    "failure_reason": "Duplicate document"
-                                }
+                                    "failure_reason": "Duplicate document",
+                                },
                             )
                             continue
 
                         # Check if franchisor exists
                         existing_franchisor = await db_manager.get_records_by_filter(
-                            "franchisors",
-                            {"canonical_name": franchise_name}
+                            "franchisors", {"canonical_name": franchise_name}
                         )
-                        
+
                         if existing_franchisor:
                             franchisor_id = existing_franchisor[0]["id"]
                         else:
@@ -297,13 +289,13 @@ async def download_state_documents(
                                 id=uuid4(),
                                 canonical_name=franchise_name,
                                 created_at=datetime.utcnow(),
-                                updated_at=datetime.utcnow()
+                                updated_at=datetime.utcnow(),
                             )
                             franchisor_dict = serialize_for_db(franchisor.model_dump())
                             await db_manager.batch.batch_upsert(
-                                'franchisors', 
-                                [franchisor_dict], 
-                                conflict_columns=['canonical_name']
+                                "franchisors",
+                                [franchisor_dict],
+                                conflict_columns=["canonical_name"],
                             )
                             franchisor_id = str(franchisor.id)
 
@@ -314,70 +306,63 @@ async def download_state_documents(
                             source_name=state_config.state_code,
                             processing_status=ProcessingStatus.PENDING,
                             issue_date=metadata.filing_metadata.get(
-                                "filing_date", 
-                                datetime.utcnow().date()
+                                "filing_date", datetime.utcnow().date()
                             ),
                             document_type=metadata.filing_metadata.get(
-                                "document_type", 
-                                "Initial"
+                                "document_type", "Initial"
                             ),
                             filing_state=state_config.state_code,
                             drive_path="",  # Will be updated after upload
                             drive_file_id="",  # Will be updated after upload
                             created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow()
+                            updated_at=datetime.utcnow(),
                         )
                         fdd_dict = serialize_for_db(fdd.model_dump())
-                        await db_manager.batch.batch_upsert('fdds', [fdd_dict])
+                        await db_manager.batch.batch_upsert("fdds", [fdd_dict])
 
                     # Upload to Google Drive
                     from tasks.drive_operations import get_drive_manager
+
                     drive_manager = get_drive_manager()
-                    
+
                     # Create state-specific folder structure
                     root_folder_id = drive_manager.settings.gdrive_folder_id
                     state_folder_id = drive_manager.get_or_create_folder(
-                        state_config.folder_name,
-                        parent_id=root_folder_id
+                        state_config.folder_name, parent_id=root_folder_id
                     )
-                    
+
                     # Clean franchise name for filename
                     clean_name = franchise_name.replace("/", "_").replace("\\", "_")
                     # Include UUID in filename for unique identification and tracking
                     file_name = f"{str(fdd.id)}_{clean_name}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
-                    
+
                     # Upload file
                     uploaded_file_id = drive_manager.upload_file(
                         file_content=content,
                         filename=file_name,
                         parent_id=state_folder_id,
-                        mime_type="application/pdf"
+                        mime_type="application/pdf",
                     )
-                    
+
                     # Update FDD record with file path and hash
                     async with get_database_manager() as db_manager:
-                        update_data = serialize_for_db({
-                            "drive_path": f"/{state_config.folder_name}/{file_name}",
-                            "drive_file_id": uploaded_file_id,
-                            "sha256_hash": doc_hash,
-                            "total_pages": None,  # Will be set during processing
-                            "processing_status": "pending",
-                            "updated_at": datetime.utcnow()
-                        })
-                        await db_manager.update_record(
-                            "fdds",
-                            str(fdd.id),
-                            update_data
+                        update_data = serialize_for_db(
+                            {
+                                "drive_path": f"/{state_config.folder_name}/{file_name}",
+                                "drive_file_id": uploaded_file_id,
+                                "sha256_hash": doc_hash,
+                                "total_pages": None,  # Will be set during processing
+                                "processing_status": "pending",
+                                "updated_at": datetime.utcnow(),
+                            }
                         )
-                        
+                        await db_manager.update_record("fdds", str(fdd.id), update_data)
+
                         # Update scrape metadata with successful status
                         await db_manager.update_record(
                             "scrape_metadata",
                             str(metadata.id),
-                            {
-                                "scrape_status": "completed",
-                                "fdd_id": str(fdd.id)
-                            }
+                            {"scrape_status": "completed", "fdd_id": str(fdd.id)},
                         )
 
                     pipeline_logger.info(
@@ -386,7 +371,7 @@ async def download_state_documents(
                         file_size=len(content),
                         sha256_hash=doc_hash[:16],
                         metadata_id=str(metadata.id),
-                        drive_file_id=uploaded_file_id
+                        drive_file_id=uploaded_file_id,
                     )
 
                     downloaded_files.append(f"/{state_config.folder_name}/{file_name}")
@@ -420,9 +405,9 @@ async def download_state_documents(
     except Exception as e:
         logger.error(f"{state_config.state_name} document download failed: {e}")
         pipeline_logger.error(
-            f"{state_config.state_code.lower()}_download_failed", 
-            error=str(e), 
-            run_id=str(prefect_run_id)
+            f"{state_config.state_code.lower()}_download_failed",
+            error=str(e),
+            run_id=str(prefect_run_id),
         )
         raise
 
@@ -455,8 +440,7 @@ async def collect_state_metrics(
     """
     logger = get_run_logger()
     pipeline_logger = PipelineLogger(
-        f"{state_config.state_code.lower()}_metrics", 
-        prefect_run_id=str(prefect_run_id)
+        f"{state_config.state_code.lower()}_metrics", prefect_run_id=str(prefect_run_id)
     )
 
     try:
@@ -520,7 +504,7 @@ async def collect_state_metrics(
 async def scrape_state_flow(
     state_config: StateConfig,
     download_documents: bool = True,
-    max_documents: Optional[int] = None
+    max_documents: Optional[int] = None,
 ) -> dict:
     """Main flow for scraping any state franchise portal.
 

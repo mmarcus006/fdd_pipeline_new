@@ -31,29 +31,29 @@ from models.document_models import (
     FDDSectionDetector,
 )
 
+
 # Create mock classes for backward compatibility in tests
 class MinerUClient:
     """Mock MinerU client for tests."""
+
     def __init__(self):
         pass
-    
+
     async def process_document(self, pdf_path, timeout_seconds=300):
         # Mock implementation
         return DocumentLayout(
             total_pages=1,
             elements=[],
             processing_time=0.0,
-            model_version="mineru-local"
+            model_version="mineru-local",
         )
+
 
 # Mock functions for tests
 async def process_document_layout(pdf_path: str, fdd_id, timeout_seconds=300):
     """Mock implementation for tests."""
     layout = DocumentLayout(
-        total_pages=10,
-        elements=[],
-        processing_time=0.0,
-        model_version="mineru-v1.0"
+        total_pages=10, elements=[], processing_time=0.0, model_version="mineru-v1.0"
     )
     sections = [
         SectionBoundary(
@@ -61,10 +61,11 @@ async def process_document_layout(pdf_path: str, fdd_id, timeout_seconds=300):
             item_name="Initial Fees",
             start_page=1,
             end_page=3,
-            confidence=0.9
+            confidence=0.9,
         )
     ]
     return layout, sections
+
 
 def validate_section_boundaries(sections, total_pages):
     """Mock implementation for tests."""

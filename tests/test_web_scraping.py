@@ -152,7 +152,9 @@ class TestBaseScraper:
                 side_effect=Exception("Playwright failed")
             )
 
-            with pytest.raises(WebScrapingException, match="Failed to initialize scraper"):
+            with pytest.raises(
+                WebScrapingException, match="Failed to initialize scraper"
+            ):
                 await scraper.initialize()
 
     @pytest.mark.asyncio

@@ -25,10 +25,10 @@ T = TypeVar("T", bound=BaseModel)
 
 def serialize_for_db(data: dict) -> dict:
     """Convert UUID and datetime objects to strings for JSON serialization.
-    
+
     Args:
         data: Dictionary containing data to serialize
-        
+
     Returns:
         Dictionary with serialized values
     """
@@ -42,8 +42,11 @@ def serialize_for_db(data: dict) -> dict:
             serialized[key] = serialize_for_db(value)
         elif isinstance(value, list):
             serialized[key] = [
-                serialize_for_db(item) if isinstance(item, dict) else 
-                str(item) if isinstance(item, (UUID, datetime)) else item 
+                (
+                    serialize_for_db(item)
+                    if isinstance(item, dict)
+                    else str(item) if isinstance(item, (UUID, datetime)) else item
+                )
                 for item in value
             ]
         else:
@@ -1043,6 +1046,7 @@ class DatabaseManager:
         """Execute query and return first result (async wrapper)."""
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
+
             def _execute():
                 try:
                     with self.get_session() as session:
@@ -1054,13 +1058,14 @@ class DatabaseManager:
                 except Exception as e:
                     logger.error(f"Database fetch_one error: {e}")
                     raise
-            
+
             return await loop.run_in_executor(executor, _execute)
-    
+
     async def fetch_all(self, query: str, *args) -> List[Dict[str, Any]]:
         """Execute query and return all results (async wrapper)."""
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
+
             def _execute():
                 try:
                     with self.get_session() as session:
@@ -1070,13 +1075,14 @@ class DatabaseManager:
                 except Exception as e:
                     logger.error(f"Database fetch_all error: {e}")
                     raise
-            
+
             return await loop.run_in_executor(executor, _execute)
-    
+
     async def execute(self, query: str, *args) -> None:
         """Execute query without returning results (async wrapper)."""
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
+
             def _execute():
                 try:
                     with self.get_session() as session:
@@ -1085,7 +1091,7 @@ class DatabaseManager:
                 except Exception as e:
                     logger.error(f"Database execute error: {e}")
                     raise
-            
+
             return await loop.run_in_executor(executor, _execute)
 
     def get_table_statistics(self, table_name: str) -> Dict[str, Any]:

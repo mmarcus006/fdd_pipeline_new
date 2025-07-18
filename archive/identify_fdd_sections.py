@@ -1,13 +1,14 @@
-
 import json
 from prefect import flow, task
 from src.processing.section_identifier import FDDSectionIdentifier
 
+
 @task
 def load_json_data(file_path: str) -> dict:
     """Loads JSON data from a file."""
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         return json.load(f)
+
 
 @task
 def identify_fdd_sections_task(pdf_info: dict) -> list:
@@ -16,12 +17,14 @@ def identify_fdd_sections_task(pdf_info: dict) -> list:
     section_map = identifier.identify_sections(pdf_info)
     return section_map
 
+
 @flow
 def identify_fdd_sections_flow(file_path: str):
     """A Prefect flow to identify FDD sections from a JSON file."""
     pdf_info = load_json_data(file_path)
     section_map = identify_fdd_sections_task(pdf_info)
     print(section_map)
+
 
 if __name__ == "__main__":
     # Example usage:

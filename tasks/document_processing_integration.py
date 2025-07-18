@@ -13,12 +13,18 @@ from models.section import FDDSection, ExtractionStatus
 from utils.logging import PipelineLogger
 from tasks.llm_extraction import FDDSectionExtractor, extract_fdd_document
 from models.document_models import SectionBoundary
-from tasks.mineru_processing import process_document_with_mineru, extract_sections_from_mineru
+from tasks.mineru_processing import (
+    process_document_with_mineru,
+    extract_sections_from_mineru,
+)
 
 
 @task(name="extract_section_content", retries=2)
 async def extract_section_content(
-    pdf_path: Path, section: SectionBoundary, fdd_id: UUID, primary_model: str = "gemini"
+    pdf_path: Path,
+    section: SectionBoundary,
+    fdd_id: UUID,
+    primary_model: str = "gemini",
 ) -> Dict[str, Any]:
     """
     Extract structured content from a PDF section using LLM with Instructor.
@@ -63,9 +69,12 @@ async def extract_section_content(
 
         # Create FDDSection object for the extractor
         from uuid import uuid4
+
         fdd_section = FDDSection(
             id=uuid4(),  # Generate unique ID
-            fdd_id=UUID(str(fdd_id)) if isinstance(fdd_id, str) else fdd_id,  # Ensure UUID type
+            fdd_id=(
+                UUID(str(fdd_id)) if isinstance(fdd_id, str) else fdd_id
+            ),  # Ensure UUID type
             item_no=section.item_no,
             item_name=section.item_name,
             start_page=section.start_page,
@@ -126,31 +135,32 @@ async def process_document_with_extraction(
         # Step 1: Process document with MinerU
         # For local files, create a file URL
         pdf_url = f"file://{pdf_path.absolute()}"
-        
+
         mineru_result = await process_document_with_mineru(
             pdf_url=pdf_url,
             fdd_id=fdd_id,
             franchise_name="Document Processing",
-            timeout_seconds=300
+            timeout_seconds=300,
         )
-        
+
         # Step 2: Extract sections from MinerU output
         sections = await extract_sections_from_mineru(
             mineru_json_path=mineru_result["drive_files"]["json"]["path"],
             fdd_id=fdd_id,
-            total_pages=100  # Will be determined from JSON
+            total_pages=100,  # Will be determined from JSON
         )
-        
+
         # For now, validated sections are the same as sections
         validated_sections = sections
-        
+
         # Create layout info from MinerU result
         from models.document_models import DocumentLayout
+
         layout = DocumentLayout(
             total_pages=100,  # This should come from MinerU JSON
             model_version="mineru",
             processing_time=0.0,
-            mineru_output_dir=Path(mineru_result["drive_files"]["json"]["path"]).parent
+            mineru_output_dir=Path(mineru_result["drive_files"]["json"]["path"]).parent,
         )
 
         # Step 3: Filter sections for extraction
@@ -176,7 +186,10 @@ async def process_document_with_extraction(
         extraction_results = {}
         for section in sections_to_extract:
             result = await extract_section_content(
-                pdf_path=pdf_path, section=section, fdd_id=fdd_id, primary_model=primary_model
+                pdf_path=pdf_path,
+                section=section,
+                fdd_id=fdd_id,
+                primary_model=primary_model,
             )
             extraction_results[f"item_{section.item_no}"] = result
 
@@ -185,7 +198,11 @@ async def process_document_with_extraction(
             "fdd_id": str(fdd_id),
             "layout_analysis": {
                 "total_pages": layout.total_pages,
-                "processing_time": layout.processing_time if hasattr(layout, 'processing_time') else 0.0,
+                "processing_time": (
+                    layout.processing_time
+                    if hasattr(layout, "processing_time")
+                    else 0.0
+                ),
                 "model_version": layout.model_version,
             },
             "sections_detected": [s.dict() for s in validated_sections],
@@ -274,8 +291,10 @@ async def extract_fdd_sections_batch(
         from models.fdd import FDD
 
         # Get franchise_id from database or create a new one
-        franchise_id = uuid4()  # In production, this should come from the actual franchise record
-        
+        franchise_id = (
+            uuid4()
+        )  # In production, this should come from the actual franchise record
+
         fdd = FDD(
             id=fdd_id,
             franchise_id=franchise_id,

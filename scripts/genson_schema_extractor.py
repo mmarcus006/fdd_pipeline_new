@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from genson import SchemaBuilder
 
+
 def generate_schema_with_genson(input_path, output_path):
     """
     Generates a JSON schema from a file using the genson library.
@@ -13,7 +14,7 @@ def generate_schema_with_genson(input_path, output_path):
     """
     try:
         print(f"Reading input file: '{input_path}'...")
-        with open(input_path, 'r', encoding='utf-8') as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
 
         # Create a SchemaBuilder instance
@@ -26,9 +27,9 @@ def generate_schema_with_genson(input_path, output_path):
         generated_schema = builder.to_schema()
 
         print(f"Writing generated schema to: '{output_path}'...")
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(generated_schema, f, indent=2)
-        
+
         print("Schema generation successful!")
 
     except FileNotFoundError:
@@ -47,12 +48,15 @@ def main():
     Main function to handle command-line arguments.
     """
 
-    input_file = Path(r"C:\Users\Miller\projects\fdd_pipeline_new\examples\2025_VALVOLINE INSTANT OIL CHANGE FRANCHISING, INC_32722-202412-04.pdf-42b85dc3-4422-4724-abf7-344b6d910da3\layout.json")
-    
+    input_file = Path(
+        r"C:\Users\Miller\projects\fdd_pipeline_new\examples\2025_VALVOLINE INSTANT OIL CHANGE FRANCHISING, INC_32722-202412-04.pdf-42b85dc3-4422-4724-abf7-344b6d910da3\layout.json"
+    )
+
     # Create a name for the output file
     output_file = input_file.parent / f"{input_file.stem}_schema.json"
 
     generate_schema_with_genson(input_file, output_file)
+
 
 if __name__ == "__main__":
     main()
