@@ -16,10 +16,17 @@ Based on the task requirements (1.1, 1.2, 1.3, 1.4):
 #### 1. Created `WisconsinScraper` with multi-step form navigation
 - **File**: `tasks/wisconsin_scraper.py`
 - **Features**:
-  - Inherits from `BaseScraper` for common functionality
+  - Inherits from `BaseScraper` for common functionality (refactored 2024)
+  - Uses shared utilities from `utils/scraping_utils.py`
   - Handles Wisconsin portal's unique multi-step workflow
   - Implements retry logic with exponential backoff
   - Comprehensive error handling and logging
+
+**Recent Improvements (2024)**:
+- Migrated from legacy standalone scraper to unified BaseScraper framework
+- Added `download_and_save_document()` method with enhanced error handling
+- Improved table extraction using generic `extract_table_data()` method
+- Added CSV export functionality for metadata
 
 #### 2. Implemented active filings table parsing and franchise name extraction
 - **Method**: `_extract_franchise_names_from_table()`

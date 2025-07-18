@@ -14,6 +14,7 @@ The FDD Pipeline is an automated system for acquiring, processing, and analyzing
 - ☁️ **Cloud-Native Storage**: Google Drive for documents, Supabase for data
 - 🔄 **Workflow Orchestration**: Prefect manages pipeline execution and monitoring
 - 🔍 **Intelligent Deduplication**: Fuzzy matching and embeddings prevent duplicate processing
+- 🏗️ **Refactored Architecture**: Unified scraper framework eliminates code duplication and improves maintainability
 
 ## Architecture
 
@@ -119,10 +120,17 @@ fdd-pipeline/
 ├── flows/              # Prefect workflow definitions
 ├── models/             # Pydantic models for each FDD section
 ├── prompts/            # YAML prompt templates for LLM extraction
-├── tasks/              # Reusable Prefect tasks
-├── utils/              # Helper functions
+├── tasks/              # State-specific scrapers and processing tasks
+│   ├── web_scraping.py      # BaseScraper framework
+│   ├── wisconsin_scraper.py # Wisconsin implementation  
+│   ├── minnesota_scraper.py # Minnesota implementation
+│   └── exceptions.py        # Custom exception classes
+├── utils/              # Shared utilities and database operations
+│   ├── database.py          # Database manager
+│   ├── scraping_utils.py    # Common scraping utilities
+│   └── logging.py           # Structured logging
 ├── migrations/         # Supabase schema migrations
-├── tests/              # Test suite
+├── tests/              # Comprehensive test suite
 ├── docs/               # Detailed documentation
 └── config.py           # Centralized configuration
 ```
@@ -158,6 +166,24 @@ fdd-pipeline/
 - **Email Alerts**: Configured for pipeline failures
 - **Logs**: Stored in `pipeline_logs` table
 - **Metrics**: Section extraction success rates, processing times
+
+## Recent Improvements (2024)
+
+### Scraper Architecture Refactoring
+We recently completed a major refactoring of the web scraping system to eliminate code duplication and improve maintainability:
+
+**Key Changes:**
+- **Unified Framework**: All scrapers now inherit from `BaseScraper` class
+- **Eliminated Duplication**: Removed ~400 lines of duplicate code between state scrapers
+- **Shared Utilities**: Common functions moved to `utils/scraping_utils.py`
+- **Consistent Error Handling**: Standardized exception hierarchy across all scrapers
+- **Enhanced Features**: Added streaming downloads, cookie management, table extraction, and pagination handling
+
+**Benefits:**
+- Faster development of new state scrapers
+- Easier maintenance and debugging
+- Better test coverage and reliability
+- Consistent behavior across all scraping operations
 
 ## Development
 

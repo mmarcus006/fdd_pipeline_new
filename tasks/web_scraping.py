@@ -6,7 +6,8 @@ import random
 import time
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Union
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union, AsyncIterator, Tuple
 from uuid import UUID
 
 import httpx
@@ -22,6 +23,15 @@ from pydantic import BaseModel
 from config import get_settings
 from models.scrape_metadata import ScrapeMetadata
 from utils.logging import PipelineLogger
+from utils.scraping_utils import (
+    sanitize_filename,
+    get_default_headers,
+    parse_date_formats,
+    extract_filing_number,
+    clean_text,
+    normalize_url,
+    calculate_retry_delay,
+)
 from tasks.exceptions import (
     WebScrapingException,
     BrowserInitializationError,
@@ -151,11 +161,15 @@ class BaseScraper(ABC):
             self.page.set_default_timeout(self.timeout)
             self.page.set_default_navigation_timeout(self.timeout)
 
-            # Initialize HTTP client
+            # Initialize HTTP client with enhanced headers
+            headers = get_default_headers()
+            headers["User-Agent"] = user_agent
+            
             self.http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0),
-                headers={"User-Agent": user_agent},
+                timeout=httpx.Timeout(60.0),  # Increased timeout for large files
+                headers=headers,
                 follow_redirects=True,
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
             )
 
             self.logger.info("scraper_initialized", user_agent=user_agent)
@@ -533,6 +547,300 @@ class BaseScraper(ABC):
             SHA256 hash as hex string
         """
         return hashlib.sha256(content).hexdigest()
+    
+    async def download_file_streaming(
+        self, 
+        url: str, 
+        filepath: Path,
+        chunk_size: int = 8192,
+        progress_callback: Optional[callable] = None
+    ) -> bool:
+        """Download file with streaming and progress tracking.
+        
+        Args:
+            url: URL to download from
+            filepath: Path to save file
+            chunk_size: Size of chunks to download
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            True if download successful
+            
+        Raises:
+            DownloadFailedError: If download fails
+        """
+        try:
+            # Ensure directory exists
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Check if file already exists
+            if filepath.exists():
+                self.logger.info("file_already_exists", filepath=str(filepath))
+                return True
+            
+            async def _download():
+                async with self.http_client.stream("GET", url) as response:
+                    response.raise_for_status()
+                    
+                    # Get total size if available
+                    total_size = int(response.headers.get("content-length", 0))
+                    downloaded = 0
+                    
+                    # Download with progress tracking
+                    with open(filepath, "wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size):
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            if progress_callback and total_size:
+                                progress_callback(downloaded, total_size)
+                    
+                    self.logger.info(
+                        "file_downloaded_streaming",
+                        url=url,
+                        filepath=str(filepath),
+                        size=downloaded
+                    )
+                    
+                return True
+            
+            return await self.retry_with_backoff(_download, "streaming_download")
+            
+        except Exception as e:
+            self.logger.error(
+                "streaming_download_failed",
+                url=url,
+                error=str(e)
+            )
+            raise DownloadFailedError(
+                f"Streaming download failed: {e}",
+                correlation_id=self.correlation_id,
+                context={"url": url, "filepath": str(filepath)}
+            )
+    
+    async def manage_cookies(self) -> Dict[str, str]:
+        """Extract and manage cookies between Playwright and HTTP client.
+        
+        Returns:
+            Dictionary of cookies
+        """
+        if not self.context:
+            return {}
+        
+        try:
+            # Get cookies from browser context
+            cookies = await self.context.cookies()
+            
+            # Convert to dict format for HTTP client
+            cookie_dict = {}
+            for cookie in cookies:
+                cookie_dict[cookie["name"]] = cookie["value"]
+            
+            # Update HTTP client cookies
+            if self.http_client:
+                self.http_client.cookies.update(cookie_dict)
+            
+            self.logger.debug(
+                "cookies_synced",
+                cookie_count=len(cookie_dict)
+            )
+            
+            return cookie_dict
+            
+        except Exception as e:
+            self.logger.warning(
+                "cookie_sync_failed",
+                error=str(e)
+            )
+            return {}
+    
+    async def extract_table_data(
+        self, 
+        table_selector: str,
+        header_row_index: int = 0
+    ) -> List[Dict[str, str]]:
+        """Generic table data extraction.
+        
+        Args:
+            table_selector: CSS selector for table
+            header_row_index: Index of header row
+            
+        Returns:
+            List of dictionaries with table data
+        """
+        if not self.page:
+            raise ElementNotFoundError(
+                "Page not initialized",
+                correlation_id=self.correlation_id
+            )
+        
+        try:
+            # Wait for table
+            await self.page.wait_for_selector(table_selector, timeout=self.timeout)
+            
+            # Extract table data
+            table_data = await self.page.evaluate("""
+                (selector, headerIndex) => {
+                    const table = document.querySelector(selector);
+                    if (!table) return [];
+                    
+                    const rows = Array.from(table.querySelectorAll('tr'));
+                    if (rows.length <= headerIndex) return [];
+                    
+                    // Get headers
+                    const headerRow = rows[headerIndex];
+                    const headers = Array.from(headerRow.querySelectorAll('th, td'))
+                        .map(cell => cell.textContent.trim());
+                    
+                    // Extract data rows
+                    const data = [];
+                    for (let i = headerIndex + 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        
+                        const rowData = {};
+                        headers.forEach((header, index) => {
+                            if (cells[index]) {
+                                rowData[header] = cells[index].textContent.trim();
+                            }
+                        });
+                        
+                        if (Object.keys(rowData).length > 0) {
+                            data.push(rowData);
+                        }
+                    }
+                    
+                    return data;
+                }
+            """, table_selector, header_row_index)
+            
+            self.logger.debug(
+                "table_data_extracted",
+                selector=table_selector,
+                row_count=len(table_data)
+            )
+            
+            return table_data
+            
+        except Exception as e:
+            self.logger.error(
+                "table_extraction_failed",
+                selector=table_selector,
+                error=str(e)
+            )
+            raise ElementNotFoundError(
+                f"Failed to extract table data: {e}",
+                correlation_id=self.correlation_id,
+                context={"selector": table_selector}
+            )
+    
+    async def handle_pagination(
+        self,
+        next_button_selector: str,
+        content_selector: str,
+        max_pages: Optional[int] = None
+    ) -> AsyncIterator[Page]:
+        """Generic pagination handler.
+        
+        Args:
+            next_button_selector: Selector for next/load more button
+            content_selector: Selector to wait for after pagination
+            max_pages: Maximum number of pages to process
+            
+        Yields:
+            Page object after each pagination
+        """
+        if not self.page:
+            raise ElementNotFoundError(
+                "Page not initialized",
+                correlation_id=self.correlation_id
+            )
+        
+        page_count = 1
+        
+        while True:
+            # Yield current page
+            yield self.page
+            
+            # Check page limit
+            if max_pages and page_count >= max_pages:
+                self.logger.info(
+                    "pagination_limit_reached",
+                    max_pages=max_pages
+                )
+                break
+            
+            try:
+                # Look for next button
+                next_button = await self.page.query_selector(next_button_selector)
+                if not next_button:
+                    self.logger.info("no_more_pages")
+                    break
+                
+                # Check if button is disabled
+                is_disabled = await next_button.get_attribute("disabled")
+                if is_disabled:
+                    self.logger.info("next_button_disabled")
+                    break
+                
+                # Get current content count for comparison
+                current_count = len(await self.page.query_selector_all(content_selector))
+                
+                # Click next button
+                await next_button.click()
+                
+                # Wait for new content
+                await self.page.wait_for_function(
+                    f"document.querySelectorAll('{content_selector}').length > {current_count}",
+                    timeout=10000
+                )
+                
+                # Additional wait for stability
+                await asyncio.sleep(1)
+                
+                page_count += 1
+                self.logger.debug(
+                    "pagination_advanced",
+                    page=page_count
+                )
+                
+            except Exception as e:
+                self.logger.warning(
+                    "pagination_ended",
+                    page=page_count,
+                    reason=str(e)
+                )
+                break
+    
+    async def clear_search_input(self, selector: str) -> None:
+        """Clear a search input field.
+        
+        Args:
+            selector: CSS selector for input field
+        """
+        if not self.page:
+            return
+        
+        try:
+            input_element = await self.page.query_selector(selector)
+            if input_element:
+                # Triple-click to select all and then delete
+                await input_element.click(click_count=3)
+                await self.page.keyboard.press("Delete")
+                
+                # Alternative: Clear using JavaScript
+                await self.page.evaluate(
+                    f"document.querySelector('{selector}').value = ''"
+                )
+                
+                self.logger.debug("search_input_cleared", selector=selector)
+                
+        except Exception as e:
+            self.logger.warning(
+                "clear_input_failed",
+                selector=selector,
+                error=str(e)
+            )
 
     @abstractmethod
     async def discover_documents(self) -> List[DocumentMetadata]:

@@ -78,7 +78,7 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Cost-effective for simple tasks
 
 ### Document Processing
-- **[MinerU/magic-pdf](https://github.com/opendatalab/MinerU)** (1.3.12, local installation) - GPU-accelerated PDF processing
+- **[MinerU](https://github.com/opendatalab/MinerU)** (2,0>, local installation) - GPU-accelerated PDF processing
   - **Purpose**: High-quality PDF to Markdown/JSON conversion with structure preservation
   - **Key Features**:
     - Deep learning-based layout analysis using state-of-the-art models

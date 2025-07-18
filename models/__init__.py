@@ -7,25 +7,25 @@ from .fdd import FDD, FDDCreate, FDDBase, DocumentType, ProcessingStatus
 from .section import FDDSection, FDDSectionBase, ExtractionStatus
 
 # Structured data models
-from .item5_fees import InitialFee, InitialFeeBase, DueAt
-from .item6_other_fees import OtherFee, OtherFeeBase, FeeFrequency, CalculationBasis
+from .item5_fees import Item5Fee, Item5FeesResponse, InitialFeeDiscount, AdditionalFee
+from .base_items import FeeFrequency, CalculationBasis, DiscountType, ValidationStatus
+from .item6_other_fees import Item6OtherFee, OtherFeeStructure, Item6OtherFeesResponse
 from .item7_investment import (
-    InitialInvestment,
-    InitialInvestmentBase,
-    InitialInvestmentSummary,
+    InvestmentCategory,
+    Item7Investment, 
+    InvestmentItem,
+    Item7InvestmentResponse,
+    InvestmentSummary,
 )
-from .item19_fpr import FPR, FPRBase, DisclosureType
+from .item19_fpr import FPRTable, Item19FPR, Item19FPRResponse
 from .item20_outlets import (
-    OutletSummary,
-    OutletSummaryBase,
-    StateCount,
-    StateCountBase,
-    OutletStateSummary,
     OutletType,
-    validate_state_total,
-    calculate_outlet_growth_rate,
+    OutletSummary,
+    StateCount,
+    OutletTable,
+    Item20OutletsResponse,
 )
-from .item21_financials import Financials, FinancialsBase, AuditOpinion
+from .item21_financials import AuditOpinion, StatementType, Financials, FinancialTable, Item21FinancialsResponse
 
 # Operational models
 from .scrape_metadata import ScrapeMetadata, ScrapeMetadataBase
@@ -89,30 +89,35 @@ __all__ = [
     "FDDSectionBase",
     "ExtractionStatus",
     # Structured data models
-    "InitialFee",
-    "InitialFeeBase",
-    "DueAt",
-    "OtherFee",
-    "OtherFeeBase",
+    "Item5Fee",
+    "Item5FeesResponse", 
+    "InitialFeeDiscount",
+    "AdditionalFee",
     "FeeFrequency",
-    "CalculationBasis",
-    "InitialInvestment",
-    "InitialInvestmentBase",
-    "InitialInvestmentSummary",
-    "FPR",
-    "FPRBase",
-    "DisclosureType",
-    "OutletSummary",
-    "OutletSummaryBase",
-    "StateCount",
-    "StateCountBase",
-    "OutletStateSummary",
+    "CalculationBasis", 
+    "DiscountType",
+    "ValidationStatus",
+    "Item6OtherFee",
+    "OtherFeeStructure", 
+    "Item6OtherFeesResponse",
+    "InvestmentCategory",
+    "Item7Investment", 
+    "InvestmentItem",
+    "Item7InvestmentResponse",
+    "InvestmentSummary",
+    "FPRTable", 
+    "Item19FPR",
+    "Item19FPRResponse",
     "OutletType",
-    "validate_state_total",
-    "calculate_outlet_growth_rate",
-    "Financials",
-    "FinancialsBase",
+    "OutletSummary",
+    "StateCount",
+    "OutletTable",
+    "Item20OutletsResponse",
     "AuditOpinion",
+    "StatementType", 
+    "Financials",
+    "FinancialTable",
+    "Item21FinancialsResponse",
     # Operational models
     "ScrapeMetadata",
     "ScrapeMetadataBase",

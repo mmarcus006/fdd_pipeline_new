@@ -3,14 +3,27 @@
 import asyncio
 import json
 import re
-from typing import List, Optional
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Dict, Any
 from urllib.parse import urljoin, urlparse
 
 from tasks.web_scraping import (
     BaseScraper,
     DocumentMetadata,
-    ExtractionError,
-    NavigationError,
+)
+from tasks.exceptions import (
+    ElementNotFoundError,
+    NavigationTimeoutError,
+    WebScrapingException,
+)
+from utils.scraping_utils import (
+    clean_text,
+    sanitize_filename,
+    create_document_filename,
+    extract_filing_number,
+    parse_date_formats,
+    extract_year_from_text,
 )
 
 
@@ -63,74 +76,86 @@ class MinnesotaScraper(BaseScraper):
             # Extract documents from the current page
             documents = await self._extract_cards_results()
 
-            # Check for pagination and extract from additional pages
-            page_num = 1
-            max_pages = 20  # Reasonable limit to prevent infinite loops
-
-            while page_num < max_pages:
-                # Look for "Load more" button
-                load_more_button = await self.page.query_selector(
-                    "#main-content > form ul button"
-                )
-                if not load_more_button:
-                    # Try alternative selectors
-                    load_more_button = await self.page.query_selector(
-                        'button:has-text("Load more")'
-                    )
-
-                if not load_more_button:
-                    self.logger.info("no_more_pages_available", current_page=page_num)
-                    break
-
-                # Check if button is disabled (no more results)
-                is_disabled = await load_more_button.get_attribute("disabled")
-                if is_disabled:
-                    self.logger.info("load_more_button_disabled", current_page=page_num)
-                    break
-
-                self.logger.info("clicking_load_more_button", page_number=page_num + 1)
-
-                # Get current document count before clicking
-                current_rows = await self.page.query_selector_all("#results tr")
-                current_count = len(current_rows) - 1  # Subtract header row
-
-                # Click the "Load more" button
-                await load_more_button.click()
-
-                # Wait for new content to load
-                await asyncio.sleep(2)
-
-                # Wait for HTMX request to complete by checking if more rows were added
-                max_wait = 10  # seconds
-                wait_count = 0
-                while wait_count < max_wait:
-                    new_rows = await self.page.query_selector_all("#results tr")
-                    new_count = len(new_rows) - 1  # Subtract header row
-
-                    if new_count > current_count:
-                        # New content loaded
-                        self.logger.info(
-                            "new_content_loaded",
-                            previous_count=current_count,
-                            new_count=new_count,
-                            added=new_count - current_count,
-                        )
+            # Use enhanced pagination handling with Load More button
+            load_more_selector = 'button:has-text("Load more")'
+            alternative_selectors = [
+                "#main-content > form ul button",
+                'button:has-text("Load More")',
+                'button:has-text("LOAD MORE")',
+                'a:has-text("Load more")',
+                'button[aria-label*="load more" i]',
+                ".load-more-button",
+                "button.load-more",
+            ]
+            
+            # Try to find the load more button with various selectors
+            found_selector = None
+            for selector in [load_more_selector] + alternative_selectors:
+                try:
+                    button = await self.page.query_selector(selector)
+                    if button and await button.is_visible():
+                        found_selector = selector
+                        self.logger.debug(f"Found load more button with selector: {selector}")
                         break
-
-                    await asyncio.sleep(1)
-                    wait_count += 1
-
-                # Extract all documents from the updated table
-                all_documents = await self._extract_cards_results()
-
-                # Only add new documents (those beyond our previous count)
-                new_documents = all_documents[len(documents) :]
-                documents.extend(new_documents)
-
-                page_num += 1
-
-                # Add delay between page requests
-                await asyncio.sleep(1)
+                except:
+                    continue
+            
+            if found_selector:
+                # Handle pagination with Load More pattern
+                page_num = 1
+                max_pages = 20  # Reasonable limit
+                
+                while page_num < max_pages:
+                    # Look for load more button
+                    load_more_button = await self.page.query_selector(found_selector)
+                    if not load_more_button:
+                        self.logger.info("no_more_pages_available", current_page=page_num)
+                        break
+                    
+                    # Check if button is disabled
+                    is_disabled = await load_more_button.get_attribute("disabled")
+                    if is_disabled:
+                        self.logger.info("load_more_button_disabled", current_page=page_num)
+                        break
+                    
+                    # Get current document count
+                    current_count = len(documents)
+                    
+                    # Click load more
+                    self.logger.info("clicking_load_more_button", page_number=page_num + 1)
+                    await load_more_button.click()
+                    
+                    # Wait for new content
+                    await asyncio.sleep(2)
+                    
+                    # Wait for new rows to appear
+                    try:
+                        await self.page.wait_for_function(
+                            f"document.querySelectorAll('#results tr').length > {len(await self.page.query_selector_all('#results tr'))}",
+                            timeout=10000
+                        )
+                    except:
+                        self.logger.warning("timeout_waiting_for_new_content")
+                        break
+                    
+                    # Extract all documents from updated table
+                    all_documents = await self._extract_cards_results()
+                    
+                    # Only add new documents
+                    new_documents = all_documents[current_count:]
+                    if not new_documents:
+                        self.logger.info("no_new_documents_loaded")
+                        break
+                    
+                    documents.extend(new_documents)
+                    self.logger.info(
+                        "new_documents_loaded",
+                        count=len(new_documents),
+                        total=len(documents)
+                    )
+                    
+                    page_num += 1
+                    await asyncio.sleep(1)  # Be respectful between requests
 
             self.logger.info(
                 "minnesota_cards_document_discovery_completed",
@@ -142,7 +167,7 @@ class MinnesotaScraper(BaseScraper):
 
         except Exception as e:
             self.logger.error("minnesota_cards_document_discovery_failed", error=str(e))
-            raise ExtractionError(
+            raise WebScrapingException(
                 f"Failed to discover documents from Minnesota CARDS portal: {e}"
             )
 
@@ -295,7 +320,7 @@ class MinnesotaScraper(BaseScraper):
 
             # Make the API request
             if not self.http_client:
-                raise ExtractionError("HTTP client not initialized")
+                raise WebScrapingException("HTTP client not initialized")
 
             response = await self.http_client.post(
                 api_url, headers=headers, data=form_data
@@ -721,7 +746,7 @@ class MinnesotaScraper(BaseScraper):
             self.logger.error(
                 "minnesota_metadata_extraction_failed", url=document_url, error=str(e)
             )
-            raise ExtractionError(
+            raise WebScrapingException(
                 f"Failed to extract metadata from {document_url}: {e}"
             )
 
@@ -891,3 +916,241 @@ class MinnesotaScraper(BaseScraper):
                     return int(size_val)
 
         return None
+    
+    async def download_and_save_document(
+        self,
+        download_url: str,
+        franchise_name: str,
+        year: Optional[str] = None,
+        filing_number: Optional[str] = None,
+        document_title: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        skip_existing: bool = True
+    ) -> Optional[Path]:
+        """Download document and save to local filesystem.
+        
+        Args:
+            download_url: URL to download document from
+            franchise_name: Name of the franchise
+            year: Year of the document
+            filing_number: Optional filing number
+            document_title: Optional document title
+            output_dir: Optional output directory
+            skip_existing: Skip if file already exists
+            
+        Returns:
+            Path to saved file or None if download failed
+        """
+        try:
+            # Create filename
+            filename = create_document_filename(
+                franchise_name=franchise_name,
+                year=year or datetime.now().strftime("%Y"),
+                filing_number=filing_number,
+                document_type="FDD"
+            )
+            
+            # Determine output path
+            if not output_dir:
+                output_dir = Path("downloads") / self.source_name
+            
+            filepath = output_dir / filename
+            
+            # Check if file exists
+            if skip_existing and filepath.exists():
+                self.logger.info(
+                    "file_already_exists",
+                    franchise=franchise_name,
+                    filepath=str(filepath)
+                )
+                return filepath
+            
+            # Sync cookies between browser and HTTP client
+            await self.manage_cookies()
+            
+            # Download using streaming method
+            success = await self.download_file_streaming(
+                download_url,
+                filepath,
+                progress_callback=lambda curr, total: self.logger.debug(
+                    "download_progress",
+                    franchise=franchise_name,
+                    progress=f"{curr}/{total}" if total else f"{curr} bytes"
+                )
+            )
+            
+            if success:
+                self.logger.info(
+                    "document_saved",
+                    franchise=franchise_name,
+                    filepath=str(filepath),
+                    title=document_title
+                )
+                return filepath
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(
+                "document_save_failed",
+                franchise=franchise_name,
+                url=download_url,
+                error=str(e)
+            )
+            return None
+    
+    async def process_all_with_downloads(
+        self,
+        output_dir: Optional[Path] = None,
+        limit: Optional[int] = None,
+        skip_existing: bool = True
+    ) -> Dict[str, Any]:
+        """Discover all documents and download them.
+        
+        Args:
+            output_dir: Directory to save downloads
+            limit: Maximum number of documents to process
+            skip_existing: Skip downloading existing files
+            
+        Returns:
+            Dictionary with processing results
+        """
+        results = {
+            "discovered": 0,
+            "downloaded": 0,
+            "failed": 0,
+            "skipped": 0,
+            "documents": []
+        }
+        
+        try:
+            # Discover documents
+            documents = await self.discover_documents()
+            results["discovered"] = len(documents)
+            
+            # Apply limit if specified
+            if limit:
+                documents = documents[:limit]
+            
+            # Process each document
+            for i, doc in enumerate(documents):
+                try:
+                    self.logger.info(
+                        "processing_document",
+                        index=i + 1,
+                        total=len(documents),
+                        franchise=doc.franchise_name
+                    )
+                    
+                    # Extract year from metadata
+                    year = None
+                    if doc.additional_metadata:
+                        year = doc.additional_metadata.get("year")
+                    
+                    # Download document
+                    filepath = await self.download_and_save_document(
+                        download_url=doc.download_url,
+                        franchise_name=doc.franchise_name,
+                        year=year,
+                        filing_number=doc.filing_number,
+                        document_title=doc.additional_metadata.get("title"),
+                        output_dir=output_dir,
+                        skip_existing=skip_existing
+                    )
+                    
+                    if filepath:
+                        if filepath.exists() and skip_existing:
+                            results["skipped"] += 1
+                        else:
+                            results["downloaded"] += 1
+                        
+                        # Add to results with filepath
+                        doc_result = doc.dict()
+                        doc_result["local_filepath"] = str(filepath)
+                        results["documents"].append(doc_result)
+                    else:
+                        results["failed"] += 1
+                    
+                    # Be respectful between downloads
+                    await asyncio.sleep(1)
+                    
+                except Exception as e:
+                    self.logger.error(
+                        "document_processing_failed",
+                        franchise=doc.franchise_name,
+                        error=str(e)
+                    )
+                    results["failed"] += 1
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(
+                "batch_processing_failed",
+                error=str(e)
+            )
+            results["error"] = str(e)
+            return results
+    
+    async def export_to_csv(self, documents: List[DocumentMetadata], filepath: Path) -> bool:
+        """Export document metadata to CSV file.
+        
+        Args:
+            documents: List of document metadata to export
+            filepath: Path to save CSV file
+            
+        Returns:
+            True if export successful
+        """
+        import csv
+        
+        try:
+            # Ensure directory exists
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Prepare data for CSV
+            rows = []
+            for doc in documents:
+                # Extract metadata
+                metadata = doc.additional_metadata or {}
+                
+                row = {
+                    "Franchisor": metadata.get("franchisor", ""),
+                    "Franchise Names": doc.franchise_name,
+                    "Document Title": metadata.get("title", ""),
+                    "Year": metadata.get("year", ""),
+                    "File Number": doc.filing_number or "",
+                    "Document Types": doc.document_type,
+                    "Received Date": metadata.get("received_date", ""),
+                    "Added On": metadata.get("added_on", ""),
+                    "Notes": metadata.get("notes", ""),
+                    "Download URL": doc.download_url,
+                    "Document ID": metadata.get("document_id", ""),
+                }
+                
+                rows.append(row)
+            
+            # Write to CSV
+            if rows:
+                fieldnames = list(rows[0].keys())
+                with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                
+                self.logger.info(
+                    "csv_export_completed",
+                    filepath=str(filepath),
+                    row_count=len(rows)
+                )
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(
+                "csv_export_failed",
+                filepath=str(filepath),
+                error=str(e)
+            )
+            return False

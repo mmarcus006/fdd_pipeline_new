@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from tasks.wisconsin_scraper import WisconsinScraper
-from tasks.web_scraping import DocumentMetadata, ExtractionError, NavigationError
+from tasks.web_scraping import DocumentMetadata
+from tasks.exceptions import ElementNotFoundError, NavigationTimeoutError, WebScrapingException
 
 
 @pytest.mark.asyncio
@@ -98,12 +99,16 @@ class TestWisconsinScraper:
         self, scraper, mock_active_filings_table_html
     ):
         """Test extraction of franchise names from active filings table."""
-        # Mock page navigation and table extraction
-        scraper.page.wait_for_selector = AsyncMock()
-        scraper.page.evaluate = AsyncMock(return_value=mock_active_filings_table_html)
-
-        # Mock safe_navigate
+        # Mock the extract_table_data method to return structured data
+        mock_table_data = [
+            {"Franchise Name": "McDonald's Corporation", "Status": "Active", "Date": "2024-01-15"},
+            {"Franchise Name": "Subway & Associates LLC", "Status": "Active", "Date": "2024-02-20"},
+            {"Franchise Name": "Burger King Holdings", "Status": "Active", "Date": "2024-03-10"},
+        ]
+        
+        # Mock safe_navigate and extract_table_data 
         scraper.safe_navigate = AsyncMock()
+        scraper.extract_table_data = AsyncMock(return_value=mock_table_data)
 
         # Execute the method
         franchise_names = await scraper._extract_franchise_names_from_table()
@@ -120,8 +125,7 @@ class TestWisconsinScraper:
 
         # Verify method calls
         scraper.safe_navigate.assert_called_once_with(scraper.ACTIVE_FILINGS_URL)
-        scraper.page.wait_for_selector.assert_called_once()
-        scraper.page.evaluate.assert_called_once()
+        scraper.extract_table_data.assert_called_once_with("#ctl00_contentPlaceholder_grdActiveFilings")
 
     async def test_perform_franchise_search(self, scraper):
         """Test franchise search functionality."""
@@ -347,11 +351,11 @@ class TestWisconsinScraper:
     async def test_error_handling_navigation_failure(self, scraper):
         """Test error handling when navigation fails."""
         scraper.safe_navigate = AsyncMock(
-            side_effect=NavigationError("Navigation failed")
+            side_effect=NavigationTimeoutError("Navigation failed")
         )
 
         # Test that the error is properly handled and re-raised
-        with pytest.raises(ExtractionError):
+        with pytest.raises(WebScrapingException):
             await scraper._extract_franchise_names_from_table()
 
     async def test_error_handling_search_failure(self, scraper):
@@ -362,7 +366,7 @@ class TestWisconsinScraper:
         )
 
         # Test that the error is properly handled and re-raised
-        with pytest.raises(ExtractionError):
+        with pytest.raises(WebScrapingException):
             await scraper._perform_franchise_search("Test Franchise")
 
     async def test_html_entity_decoding(self, scraper):

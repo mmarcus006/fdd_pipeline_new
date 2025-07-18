@@ -19,7 +19,8 @@ with patch.dict('sys.modules', {
         scrape_minnesota_flow,
     )
 
-from tasks.web_scraping import DocumentMetadata, ScrapingError
+from tasks.web_scraping import DocumentMetadata
+from tasks.exceptions import WebScrapingException
 from models.scrape_metadata import ScrapeMetadata
 
 
@@ -133,7 +134,7 @@ class TestMinnesotaScrapingTasks:
         with patch("flows.scrape_minnesota.create_scraper") as mock_create_scraper:
             mock_create_scraper.return_value.__aenter__.return_value = mock_scraper
 
-            with pytest.raises(ScrapingError):
+            with pytest.raises(WebScrapingException):
                 await scrape_minnesota_portal(prefect_run_id)
 
     @pytest.mark.asyncio

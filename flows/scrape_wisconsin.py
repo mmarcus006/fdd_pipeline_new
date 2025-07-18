@@ -9,7 +9,8 @@ from prefect import flow, task, get_run_logger
 from prefect.task_runners import ConcurrentTaskRunner
 
 from tasks.wisconsin_scraper import WisconsinScraper
-from tasks.web_scraping import DocumentMetadata, ScrapingError, create_scraper
+from tasks.web_scraping import DocumentMetadata, create_scraper
+from tasks.exceptions import WebScrapingException
 from models.scrape_metadata import ScrapeMetadata
 from utils.database import get_database_manager
 from utils.logging import PipelineLogger
@@ -26,7 +27,7 @@ async def scrape_wisconsin_portal(prefect_run_id: UUID) -> List[DocumentMetadata
         List of discovered document metadata
 
     Raises:
-        ScrapingError: If scraping fails after all retries
+        WebScrapingException: If scraping fails after all retries
     """
     logger = get_run_logger()
     pipeline_logger = PipelineLogger(
@@ -59,7 +60,7 @@ async def scrape_wisconsin_portal(prefect_run_id: UUID) -> List[DocumentMetadata
         pipeline_logger.error(
             "wisconsin_scraping_failed", error=str(e), run_id=str(prefect_run_id)
         )
-        raise ScrapingError(f"Wisconsin portal scraping failed: {e}")
+        raise WebScrapingException(f"Wisconsin portal scraping failed: {e}")
 
 
 @task(name="process_wisconsin_documents", retries=2)

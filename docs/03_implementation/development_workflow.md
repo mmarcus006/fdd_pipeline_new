@@ -285,6 +285,84 @@ def risky_operation(data: pd.DataFrame) -> pd.DataFrame:
         raise
 ```
 
+## Scraper Development Guidelines
+
+### Creating a New State Scraper
+
+After the 2024 refactoring, all scrapers follow a unified inheritance-based pattern:
+
+1. **Create the scraper class**
+   ```python
+   # tasks/new_state_scraper.py
+   from tasks.web_scraping import BaseScraper, DocumentMetadata
+   from utils.scraping_utils import sanitize_filename, extract_filing_number
+   from typing import List, Optional
+   
+   class NewStateScraper(BaseScraper):
+       def __init__(self, **kwargs):
+           super().__init__("NEW_STATE", **kwargs)
+           self.BASE_URL = "https://state.portal.gov"
+           
+       async def discover_documents(self) -> List[DocumentMetadata]:
+           """Implement state-specific document discovery logic."""
+           # Navigate to portal, extract document list
+           pass
+           
+       async def extract_document_metadata(self, document_url: str) -> Optional[DocumentMetadata]:
+           """Extract detailed metadata for a specific document."""
+           # Navigate to document details, extract filing info
+           pass
+   ```
+
+2. **Use inherited functionality**
+   ```python
+   # Available from BaseScraper:
+   await self.safe_navigate(url)                    # Navigation with retry
+   await self.safe_click(selector)                  # Element interaction
+   await self.download_document(url)                # File downloads
+   await self.extract_table_data(selector)          # Table parsing
+   content = await self.download_file_streaming(url) # Streaming downloads
+   ```
+
+3. **Use shared utilities**
+   ```python
+   from utils.scraping_utils import (
+       sanitize_filename,     # Safe filename generation
+       extract_filing_number, # Extract filing numbers from text
+       normalize_url,         # URL normalization
+       parse_date_string,     # Date parsing
+       clean_text            # Text cleaning
+   )
+   ```
+
+4. **Follow error handling patterns**
+   ```python
+   from tasks.exceptions import (
+       WebScrapingException,      # General scraping errors
+       ElementNotFoundError,      # Missing page elements
+       NavigationTimeoutError,    # Navigation failures
+       DownloadFailedError       # Download failures
+   )
+   ```
+
+### Testing Scrapers
+
+1. **Unit tests** for individual methods
+2. **Integration tests** with mocked web responses
+3. **Manual testing** with `headless=False` for debugging
+
+```python
+# Debug mode for visual inspection
+scraper = NewStateScraper(headless=False, prefect_run_id=uuid4())
+```
+
+### Common Patterns
+
+- **Retry logic**: Inherited from BaseScraper
+- **Error handling**: Use specific exception types
+- **Logging**: Use `self.logger` for structured logging
+- **Rate limiting**: Built into base class
+
 ## Contributing Guidelines
 
 ### Before You Start

@@ -31,7 +31,7 @@ graph TB
     
     subgraph "FDD Pipeline Core"
         subgraph "Acquisition"
-            SC[State Scrapers]
+            SC[State Scrapers<br/>BaseScraper Framework]
             DM[Download Manager]
             DD[Dedup Engine]
         end
@@ -96,8 +96,9 @@ graph TB
 **Purpose**: Automated collection of FDD documents from various sources.
 
 **Key Components**:
-- **State-Specific Scrapers**: Custom Playwright/httpx scripts per portal
-- **Download Manager**: Handles file downloads with retry logic
+- **Unified Scraper Framework**: BaseScraper class with inheritance-based state implementations
+- **Common Utilities**: Shared functions for filename sanitization, date parsing, URL normalization
+- **Download Manager**: Streaming downloads with progress tracking and retry logic
 - **Deduplication Engine**: Prevents duplicate processing using fuzzy matching
 
 **Data Flow**:

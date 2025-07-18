@@ -6,7 +6,8 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from tasks.web_scraping import DocumentMetadata, ScrapingError
+from tasks.web_scraping import DocumentMetadata
+from tasks.exceptions import WebScrapingException
 from models.scrape_metadata import ScrapeMetadata
 
 

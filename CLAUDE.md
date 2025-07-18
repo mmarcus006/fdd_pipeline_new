@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the FDD (Franchise Disclosure Document) Pipeline - a Python-based document processing system for acquiring, processing, validating, and storing franchise disclosure documents from state registries. The system uses Prefect for orchestration, multiple LLMs for extraction, and hybrid cloud storage.
 
-**Key Technologies**: Python 3.11+, Prefect 2.14+, Playwright, MinerU (GPU-accelerated PDF processing), Instructor (LLM structured outputs), Supabase, Google Drive
+**Key Technologies**: Python 3.11+, Prefect 2.14+, Playwright, MinerU (GPU-accelerated PDF processing), Instructor (LLM structured outputs), Supabase, Google Drive, FastAPI
 
 ## Key Commands
 
@@ -31,25 +31,33 @@ pytest -m unit                  # Run only unit tests
 pytest -m integration           # Run only integration tests
 pytest tests/test_wisconsin_scraper.py::test_login  # Run single test
 make test                       # Via Makefile
-make test-cov                  # With HTML coverage report
+make test-cov                   # With HTML coverage report
 
 # Code quality
 black .                         # Format code (88 char limit)
 isort .                         # Sort imports
-flake8                         # Lint
-mypy .                         # Type checking
-make format                    # Black + isort
-make check                     # All quality checks
-make config-check             # Validate configuration
+flake8                          # Lint
+mypy .                          # Type checking
+make format                     # Black + isort
+make check                      # All quality checks
+make config-check               # Validate configuration
 
 # Prefect workflow
-prefect server start           # Start server (terminal 1)
-make prefect-deploy           # Deploy flows
-prefect agent start -q default # Start agent (terminal 2)
+prefect server start            # Start server (terminal 1)
+make prefect-deploy             # Deploy flows
+prefect agent start -q default  # Start agent (terminal 2)
 
 # Database
-make db-migrate               # Run migrations
-make db-reset                # Reset database
+make db-migrate                 # Run migrations
+make db-reset                   # Reset database
+
+# API Server
+python -m src.api.run           # Run FastAPI server (default port 8000)
+python -m src.api.run --reload  # Development mode with auto-reload
+python -m src.api.run --port 8001 --workers 4  # Production mode
+
+# Cleanup
+make clean                      # Remove temporary files and caches
 ```
 
 ## Architecture
@@ -64,10 +72,12 @@ State Portals → Scrapers → Queue → Processing → Validation → Storage
 
 ### Core Components
 
-1. **Scrapers** (`franchise_web_scraper/`, `tasks/*_scraper.py`)
-   - State-specific implementations (WI_scraper.py, minnesota_scraper.py)
+1. **Scrapers** (`tasks/*_scraper.py`, `utils/scraping_utils.py`)
+   - State-specific implementations (wisconsin_scraper.py, minnesota_scraper.py) 
+   - Inherit from BaseScraper for common functionality
    - Use Playwright for browser automation
    - Implement retry logic and rate limiting
+   - Shared utilities in scraping_utils.py
 
 2. **Processing** (`tasks/`, `models/`)
    - PDF parsing with MinerU (local GPU installation)
@@ -82,16 +92,41 @@ State Portals → Scrapers → Queue → Processing → Validation → Storage
 4. **Orchestration** (`flows/`)
    - Prefect flows for state-specific pipelines
    - Task decorators for retries and monitoring
+   - Weekly scheduled runs
+
+5. **API** (`src/api/`)
+   - FastAPI internal API for monitoring and management
+   - Health checks, status endpoints
+   - Manual triggering of workflows
 
 ## Development Patterns
 
 ### Adding a New State Scraper
 
-1. Create `franchise_web_scraper/{STATE}_scraper.py`
-2. Follow pattern from `WI_scraper.py` or `minnesota_scraper.py`
-3. Implement methods: `login()`, `search_franchises()`, `get_document_details()`, `download_document()`
-4. Create corresponding flow in `flows/scrape_{state}.py`
-5. Add tests in `tests/test_{state}_scraper.py`
+1. Create `tasks/{state}_scraper.py` inheriting from `BaseScraper`
+2. Follow pattern from `wisconsin_scraper.py` or `minnesota_scraper.py`
+3. Implement abstract methods: `discover_documents()` and `extract_document_metadata()`
+4. Use shared utilities from `utils/scraping_utils.py` for common operations
+5. Create corresponding flow in `flows/scrape_{state}.py`
+6. Add tests in `tests/test_{state}_scraper.py`
+
+Example structure:
+```python
+from tasks.web_scraping import BaseScraper
+from utils.scraping_utils import sanitize_filename, extract_filing_number
+
+class NewStateScraper(BaseScraper):
+    def __init__(self, **kwargs):
+        super().__init__("NEW_STATE", **kwargs)
+        
+    async def discover_documents(self) -> List[DocumentMetadata]:
+        # State-specific document discovery logic
+        pass
+        
+    async def extract_document_metadata(self, document_url: str) -> Optional[DocumentMetadata]:
+        # Extract detailed metadata for a specific document
+        pass
+```
 
 ### Working with LLMs
 
@@ -218,6 +253,10 @@ GDRIVE_FOLDER_ID=
 MINERU_MODEL_PATH=~/.mineru/models
 MINERU_DEVICE=cuda  # or cpu
 MINERU_BATCH_SIZE=2
+
+# Prefect (optional)
+PREFECT_API_URL=
+PREFECT_CLOUD_API_KEY=
 ```
 
 ## Code Standards
@@ -247,17 +286,26 @@ tests/fixtures/golden_datasets/
 pytest -m unit        # Fast unit tests
 pytest -m integration # External service tests
 pytest -m performance # Performance benchmarks
+pytest -m slow        # Long-running tests
 ```
 
 ## Project Structure
 
 ```
-franchise_web_scraper/  # State-specific scrapers
 flows/                  # Prefect workflow definitions  
 models/                 # Pydantic models for FDD sections
 prompts/               # LLM prompt templates (YAML)
-tasks/                 # Reusable scraping/processing tasks
-utils/                 # Database, logging, entity operations
+src/api/               # FastAPI internal API
+tasks/                 # State-specific scrapers and processing tasks
+  ├── web_scraping.py   # BaseScraper and DocumentMetadata
+  ├── wisconsin_scraper.py  # Wisconsin-specific implementation
+  ├── minnesota_scraper.py  # Minnesota-specific implementation
+  ├── llm_extraction.py     # LLM processing tasks
+  └── exceptions.py         # Custom exception classes
+utils/                 # Shared utilities and database operations
+  ├── database.py       # Database manager and operations
+  ├── scraping_utils.py # Common scraping utilities
+  └── logging.py        # Structured logging setup
 migrations/            # Supabase schema (SQL)
 tests/                 # Comprehensive test suite
 config.py              # Pydantic Settings configuration
@@ -273,9 +321,39 @@ config.py              # Pydantic Settings configuration
 
 ## Debugging Tips
 
+## Recent Refactoring (2024)
+
+The scraping system was recently refactored to eliminate code duplication and improve maintainability:
+
+### Changes Made
+- **Eliminated Legacy Scrapers**: Removed `franchise_web_scraper/` directory containing duplicate implementations
+- **Consolidated Architecture**: All scrapers now inherit from `BaseScraper` in `tasks/web_scraping.py`
+- **Shared Utilities**: Created `utils/scraping_utils.py` with common functions (sanitize_filename, extract_filing_number, etc.)
+- **Unified Exception Handling**: Standardized exception classes in `tasks/exceptions.py`
+- **Enhanced Base Functionality**: Added streaming downloads, cookie management, table extraction, and pagination handling
+
+### Benefits
+- **~400 lines of duplicate code eliminated** between Wisconsin and Minnesota scrapers
+- **Consistent error handling** across all scrapers
+- **Easier to maintain** - changes to common functionality only need to be made once
+- **Better test coverage** through shared test patterns
+- **Simplified debugging** with centralized logging and error handling
+
+### Scraper Architecture
+```python
+# Modern scraper pattern
+from tasks.web_scraping import BaseScraper, DocumentMetadata
+from utils.scraping_utils import sanitize_filename
+
+class StateScraper(BaseScraper):
+    # Inherits: retry logic, navigation, downloads, error handling
+    # Implements: discover_documents(), extract_document_metadata()
+```
+
 ### Running Scrapers in Debug Mode
 ```python
 # Test scrapers with --headed mode to see browser
+from tasks.wisconsin_scraper import WisconsinScraper
 scraper = WisconsinScraper(headless=False)  # Visual debugging
 ```
 
@@ -314,4 +392,20 @@ data = {'id': uuid4(), 'created_at': datetime.utcnow()}
 # Correct way
 data = serialize_for_db({'id': uuid4(), 'created_at': datetime.utcnow()})
 # db.batch.batch_upsert('table', [data], ...)  # SUCCESS!
+```
+
+### Prefect Debugging
+
+```bash
+# Check deployment status
+prefect deployment ls
+
+# View recent flow runs
+prefect flow-run ls --limit 10
+
+# Inspect specific flow run
+prefect flow-run inspect <flow-run-id>
+
+# Manually trigger a flow
+prefect deployment run "scrape-minnesota/mn-weekly"
 ```

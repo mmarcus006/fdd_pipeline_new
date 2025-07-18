@@ -1,7 +1,7 @@
 """Item 7 - Initial Investment models using unified architecture."""
 
 from pydantic import Field, field_validator, model_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, ClassVar
 from uuid import UUID
 
 from .base_items import (
@@ -14,7 +14,7 @@ from .base import ValidationConfig
 class InvestmentCategory(BaseItemModel):
     """Standardized investment categories."""
     
-    STANDARD_CATEGORIES = {
+    STANDARD_CATEGORIES: ClassVar[Dict[str, str]] = {
         "REAL ESTATE": "Real Estate",
         "EQUIPMENT": "Equipment", 
         "SIGNAGE": "Signage",

@@ -12,11 +12,13 @@ from playwright.async_api import Browser, BrowserContext, Page, Playwright
 from tasks.web_scraping import (
     BaseScraper,
     DocumentMetadata,
-    DownloadError,
-    ExtractionError,
-    NavigationError,
-    ScrapingError,
     create_scraper,
+)
+from tasks.exceptions import (
+    WebScrapingException,
+    ElementNotFoundError,
+    NavigationTimeoutError,
+    DownloadFailedError,
 )
 
 
@@ -150,7 +152,7 @@ class TestBaseScraper:
                 side_effect=Exception("Playwright failed")
             )
 
-            with pytest.raises(ScrapingError, match="Failed to initialize scraper"):
+            with pytest.raises(WebScrapingException, match="Failed to initialize scraper"):
                 await scraper.initialize()
 
     @pytest.mark.asyncio
@@ -222,7 +224,7 @@ class TestBaseScraper:
 
         with patch("asyncio.sleep"):
             with pytest.raises(
-                ScrapingError, match="test_operation failed after 3 attempts"
+                WebScrapingException, match="test_operation failed after 3 attempts"
             ):
                 await scraper.retry_with_backoff(mock_operation, "test_operation")
 
@@ -260,13 +262,13 @@ class TestBaseScraper:
         mock_page.goto.side_effect = Exception("Navigation failed")
         scraper.page = mock_page
 
-        with pytest.raises(NavigationError, match="Failed to navigate"):
+        with pytest.raises(NavigationTimeoutError, match="Failed to navigate"):
             await scraper.safe_navigate("https://example.com")
 
     @pytest.mark.asyncio
     async def test_safe_navigate_no_page(self, scraper):
         """Test navigation without initialized page."""
-        with pytest.raises(NavigationError, match="Page not initialized"):
+        with pytest.raises(NavigationTimeoutError, match="Page not initialized"):
             await scraper.safe_navigate("https://example.com")
 
     @pytest.mark.asyncio
@@ -291,7 +293,7 @@ class TestBaseScraper:
         mock_page.wait_for_selector.return_value = None
         scraper.page = mock_page
 
-        with pytest.raises(ExtractionError, match="Element not found"):
+        with pytest.raises(ElementNotFoundError, match="Element not found"):
             await scraper.safe_click("#button")
 
     @pytest.mark.asyncio
@@ -338,7 +340,7 @@ class TestBaseScraper:
         mock_http_client.get.return_value = mock_response
         scraper.http_client = mock_http_client
 
-        with pytest.raises(ScrapingError, match="Downloaded content is empty"):
+        with pytest.raises(WebScrapingException, match="Downloaded content is empty"):
             await scraper.download_document("https://example.com/test.pdf")
 
     @pytest.mark.asyncio
@@ -352,7 +354,7 @@ class TestBaseScraper:
         mock_http_client.get.return_value = mock_response
         scraper.http_client = mock_http_client
 
-        with pytest.raises(ScrapingError, match="not a valid PDF"):
+        with pytest.raises(WebScrapingException, match="not a valid PDF"):
             await scraper.download_document("https://example.com/test.pdf")
 
     @pytest.mark.asyncio
@@ -368,7 +370,7 @@ class TestBaseScraper:
         scraper.http_client = mock_http_client
 
         with pytest.raises(
-            ScrapingError, match="document_download failed after 3 attempts"
+            WebScrapingException, match="document_download failed after 3 attempts"
         ):
             await scraper.download_document("https://example.com/test.pdf")
 

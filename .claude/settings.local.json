@@ -9,7 +9,12 @@
       "Bash(do echo \"=== Checking $file.py for $file_response references ===\")",
       "Bash(done)",
       "Bash(rm:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(uv pip:*)",
+      "WebFetch(domain:www.ecfr.gov)",
+      "WebFetch(domain:www.ftc.gov)",
+      "WebFetch(domain:lusthausfranchiselaw.com)",
+      "WebFetch(domain:python.useinstructor.com)"
     ]
   }
 }

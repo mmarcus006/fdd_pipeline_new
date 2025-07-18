@@ -9,9 +9,9 @@ from uuid import UUID
 from tasks.llm_extraction import (
     LLMExtractor,
     FDDSectionExtractor,
-    ExtractionError,
     extract_fdd_document,
 )
+from tasks.exceptions import WebScrapingException
 from models.section import FDDSection, ExtractionStatus
 from models.fdd import FDD, DocumentType
 from models.item5_fees import Item5FeesResponse
@@ -61,7 +61,7 @@ class TestLLMExtractor:
         extractor.gemini_client.create.side_effect = Exception("API error")
 
         # Test extraction
-        with pytest.raises(ExtractionError, match="Gemini extraction failed"):
+        with pytest.raises(WebScrapingException, match="Gemini extraction failed"):
             await extractor.extract_with_gemini(
                 content="Test content",
                 response_model=Item5FeesResponse,
@@ -126,7 +126,7 @@ class TestLLMExtractor:
         extractor.openai_client.create.side_effect = Exception("OpenAI failed")
 
         # Test extraction
-        with pytest.raises(ExtractionError, match="All models failed"):
+        with pytest.raises(WebScrapingException, match="All models failed"):
             await extractor.extract_with_fallback(
                 content="Test content",
                 response_model=Item5FeesResponse,
@@ -217,7 +217,7 @@ class TestFDDSectionExtractor:
     ):
         """Test extraction error handling."""
         # Setup mock to raise error
-        section_extractor.extractor.extract_with_fallback.side_effect = ExtractionError(
+        section_extractor.extractor.extract_with_fallback.side_effect = WebScrapingException(
             "Extraction failed"
         )
 
