@@ -1,29 +1,59 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(mkdir:*)",
-      "Bash(touch:*)",
-      "Bash(find:*)",
-      "Bash(python -m pytest tests/test_wisconsin_flow.py::TestWisconsinFlow::test_scrape_wisconsin_portal_task -xvs)",
-      "Bash(python:*)",
-      "WebFetch(domain:github.com)",
-      "Bash(ls:*)",
-      "Bash(rm:*)",
-      "Bash(dir .venvScriptsactivate.bat)",
-      "Bash(curl:*)",
-      "Bash(pip install:*)",
-      "Bash(uv venv:*)",
-      "Bash(.venv\\\\Scripts\\\\python.exe:*)",
-      "Bash(grep:*)",
-      "Bash(source:*)",
-      "Bash(pip3 install:*)",
-      "Bash(uv pip install:*)",
-      "Bash(make:*)"
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/mcp-security-scan.sh"
+          }
+        ]
+      }
+,
+      {
+        "matcher": "mcp__gemini",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/gemini-context-injector.sh"
+          }
+        ]
+      }
+,
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/subagent-context-injector.sh"
+          }
+        ]
+      }
+    ]
+,
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/notify.sh input"
+          }
+        ]
+      }
     ],
-    "deny": []
-  },
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "github"
-  ]
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/c/Users/Miller/projects/fdd_pipeline_new/.claude/hooks/notify.sh complete"
+          }
+        ]
+      }
+    ]
+
+  }
 }
