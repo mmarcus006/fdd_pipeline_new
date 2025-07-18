@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 from prefect import flow, task, get_run_logger
 from prefect.task_runners import ConcurrentTaskRunner
 
-from flows.scrape_wisconsin import scrape_wisconsin_flow
-from flows.scrape_minnesota import scrape_minnesota_flow
+from flows.base_state_flow import scrape_state_flow
+from flows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
 from flows.process_single_pdf import process_single_fdd_flow
 from tasks.schema_validation import validate_fdd_sections
 from utils.database import get_database_manager
@@ -216,12 +216,14 @@ async def complete_fdd_pipeline(
         # Step 1: Scrape state portal
         logger.info(f"Step 1: Scraping {state} portal...")
         if state.upper() == "WI":
-            scrape_results = await scrape_wisconsin_flow(
+            scrape_results = await scrape_state_flow(
+                state_config=WISCONSIN_CONFIG,
                 download_documents=download_documents,
                 max_documents=max_documents
             )
         elif state.upper() == "MN":
-            scrape_results = await scrape_minnesota_flow(
+            scrape_results = await scrape_state_flow(
+                state_config=MINNESOTA_CONFIG,
                 download_documents=download_documents,
                 max_documents=max_documents
             )

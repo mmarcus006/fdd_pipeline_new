@@ -26,8 +26,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.logging import get_logger
 from utils.database import get_database_manager
 from config import get_settings
-from flows.scrape_minnesota import scrape_minnesota_portal
-from flows.scrape_wisconsin import scrape_wisconsin_portal
+from flows.base_state_flow import scrape_state_flow
+from flows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
 from flows.process_single_pdf import process_single_fdd_flow
 
 logger = get_logger(__name__)
@@ -81,7 +81,11 @@ class WorkflowOrchestrator:
             try:
                 if state == "minnesota":
                     logger.info("Running Minnesota scraper...")
-                    await scrape_minnesota_portal.fn(search_limit=limit)
+                    await scrape_state_flow.fn(
+                        state_config=MINNESOTA_CONFIG,
+                        download_documents=True,
+                        max_documents=limit
+                    )
                     
                     # Get recently created FDDs
                     loop = asyncio.get_running_loop()
@@ -101,7 +105,11 @@ class WorkflowOrchestrator:
                     
                 elif state == "wisconsin":
                     logger.info("Running Wisconsin scraper...")
-                    await scrape_wisconsin_portal.fn(max_franchises=limit)
+                    await scrape_state_flow.fn(
+                        state_config=WISCONSIN_CONFIG,
+                        download_documents=True,
+                        max_documents=limit
+                    )
                     
                     # Get recently created FDDs
                     loop = asyncio.get_running_loop()
@@ -327,9 +335,17 @@ async def orchestrate(state: str, mode: str, limit: Optional[int],
                 tasks = []
                 for s in states_to_scrape:
                     if s == 'minnesota':
-                        tasks.append(scrape_minnesota_portal.fn(search_limit=limit))
+                        tasks.append(scrape_state_flow.fn(
+                            state_config=MINNESOTA_CONFIG,
+                            download_documents=True,
+                            max_documents=limit
+                        ))
                     elif s == 'wisconsin':
-                        tasks.append(scrape_wisconsin_portal.fn(max_franchises=limit))
+                        tasks.append(scrape_state_flow.fn(
+                            state_config=WISCONSIN_CONFIG,
+                            download_documents=True,
+                            max_documents=limit
+                        ))
                         
                 await asyncio.gather(*tasks, return_exceptions=True)
             else:

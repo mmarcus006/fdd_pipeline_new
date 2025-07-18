@@ -14,7 +14,9 @@
       "WebFetch(domain:www.ecfr.gov)",
       "WebFetch(domain:www.ftc.gov)",
       "WebFetch(domain:lusthausfranchiselaw.com)",
-      "WebFetch(domain:python.useinstructor.com)"
+      "WebFetch(domain:python.useinstructor.com)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)"
     ]
   }
 }

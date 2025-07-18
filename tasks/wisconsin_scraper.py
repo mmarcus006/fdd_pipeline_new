@@ -2,12 +2,8 @@
 
 import asyncio
 import re
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin, urlparse
-
-from playwright.async_api import Page
+from urllib.parse import urljoin
 
 from tasks.web_scraping import (
     BaseScraper,
@@ -15,16 +11,11 @@ from tasks.web_scraping import (
 )
 from tasks.exceptions import (
     ElementNotFoundError,
-    NavigationTimeoutError,
     WebScrapingException,
 )
-from utils.logging import PipelineLogger
+from utils.logging import get_logger
 from utils.scraping_utils import (
     clean_text,
-    sanitize_filename,
-    create_document_filename,
-    extract_filing_number,
-    parse_date_formats,
 )
 
 
@@ -264,70 +255,8 @@ class WisconsinScraper(BaseScraper):
             self.logger.error("table_extraction_failed", error=str(e))
             raise ElementNotFoundError(f"Failed to extract franchise names from table: {e}")
     
-    async def download_and_save_document(
-        self, 
-        download_url: str, 
-        franchise_name: str,
-        filing_number: Optional[str] = None,
-        output_dir: Optional[Path] = None
-    ) -> Optional[Path]:
-        """Download document and save to local filesystem.
-        
-        Args:
-            download_url: URL to download document from
-            franchise_name: Name of the franchise
-            filing_number: Optional filing number
-            output_dir: Optional output directory (defaults to config)
-            
-        Returns:
-            Path to saved file or None if download failed
-        """
-        try:
-            # Sync cookies between browser and HTTP client
-            await self.manage_cookies()
-            
-            # Create filename
-            filename = create_document_filename(
-                franchise_name=franchise_name,
-                year=datetime.now().strftime("%Y"),
-                filing_number=filing_number,
-                document_type="FDD"
-            )
-            
-            # Determine output path
-            if not output_dir:
-                output_dir = Path("downloads") / self.source_name
-            
-            filepath = output_dir / filename
-            
-            # Download using streaming method
-            success = await self.download_file_streaming(
-                download_url,
-                filepath,
-                progress_callback=lambda curr, total: self.logger.debug(
-                    "download_progress",
-                    franchise=franchise_name,
-                    progress=f"{curr}/{total}"
-                )
-            )
-            
-            if success:
-                self.logger.info(
-                    "document_saved",
-                    franchise=franchise_name,
-                    filepath=str(filepath)
-                )
-                return filepath
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(
-                "document_save_failed",
-                franchise=franchise_name,
-                error=str(e)
-            )
-            return None
+    # download_and_save_document method moved to tasks.document_metadata
+    # Use: from tasks.document_metadata import download_and_save_document
 
     async def _search_franchise_basic(
         self, franchise_name: str
@@ -682,80 +611,5 @@ class WisconsinScraper(BaseScraper):
             self.logger.error("detailed_info_extraction_failed", error=str(e))
             return {}
     
-    async def export_to_csv(self, documents: List[DocumentMetadata], filepath: Path) -> bool:
-        """Export document metadata to CSV file.
-        
-        Args:
-            documents: List of document metadata to export
-            filepath: Path to save CSV file
-            
-        Returns:
-            True if export successful
-        """
-        import csv
-        
-        try:
-            # Ensure directory exists
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Prepare data for CSV
-            rows = []
-            for doc in documents:
-                row = {
-                    "Franchise Name": doc.franchise_name,
-                    "Filing Number": doc.filing_number or "",
-                    "Filing Date": doc.filing_date or "",
-                    "Document Type": doc.document_type,
-                    "Source URL": doc.source_url,
-                    "Download URL": doc.download_url,
-                }
-                
-                # Add additional metadata fields
-                if doc.additional_metadata:
-                    metadata = doc.additional_metadata
-                    if "franchisor_info" in metadata:
-                        info = metadata["franchisor_info"]
-                        row.update({
-                            "Legal Name": info.get("legal_name", ""),
-                            "Trade Name": info.get("trade_name", ""),
-                            "Business Address": info.get("business_address", ""),
-                            "Filing Status": info.get("filing_status", ""),
-                        })
-                    
-                    if "filing_info" in metadata:
-                        info = metadata["filing_info"]
-                        row.update({
-                            "Filing Type": info.get("type", ""),
-                            "Effective Date": info.get("effective", ""),
-                        })
-                    
-                    if "states_filed" in metadata:
-                        states = metadata["states_filed"]
-                        row["States Filed"] = ", ".join(states) if states else ""
-                
-                rows.append(row)
-            
-            # Write to CSV
-            if rows:
-                fieldnames = list(rows[0].keys())
-                with open(filepath, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                
-                self.logger.info(
-                    "csv_export_completed",
-                    filepath=str(filepath),
-                    row_count=len(rows)
-                )
-                return True
-            
-            return False
-            
-        except Exception as e:
-            self.logger.error(
-                "csv_export_failed",
-                filepath=str(filepath),
-                error=str(e)
-            )
-            return False
+    # export_to_csv method moved to tasks.document_metadata
+    # Use: from tasks.document_metadata import export_documents_to_csv

@@ -55,24 +55,30 @@ def cli():
 @click.option('--test-mode', is_flag=True, help='Run in test mode with reduced dataset')
 async def scrape(state: str, limit: Optional[int], test_mode: bool):
     """Run web scraping for state portals"""
-    from flows.scrape_minnesota import scrape_minnesota_portal
-    from flows.scrape_wisconsin import scrape_wisconsin_portal
+    from flows.base_state_flow import scrape_state_flow
+    from flows.state_configs import get_state_config
     
     logger.info(f"Starting scraping for: {state}")
     
     try:
-        if state in ['minnesota', 'all']:
-            logger.info("Running Minnesota scraper...")
-            await scrape_minnesota_portal.fn(
-                search_limit=limit,
-                test_mode=test_mode
-            )
-            
-        if state in ['wisconsin', 'all']:
-            logger.info("Running Wisconsin scraper...")
-            await scrape_wisconsin_portal.fn(
-                max_franchises=limit,
-                test_mode=test_mode
+        if state == 'all':
+            # Run all states
+            for state_name in ['minnesota', 'wisconsin']:
+                logger.info(f"Running {state_name} scraper...")
+                state_config = get_state_config(state_name)
+                await scrape_state_flow(
+                    state_config=state_config,
+                    download_documents=not test_mode,
+                    max_documents=limit
+                )
+        else:
+            # Run specific state
+            logger.info(f"Running {state} scraper...")
+            state_config = get_state_config(state)
+            await scrape_state_flow(
+                state_config=state_config,
+                download_documents=not test_mode,
+                max_documents=limit
             )
             
         logger.info("Scraping completed successfully")
@@ -116,29 +122,16 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
     if deploy:
         logger.info("Deploying flows to Prefect...")
         
-        # Deploy Minnesota flow
+        # Deploy state flows using new deployment script
         result = subprocess.run(
-            ["python", "scripts/deploy_minnesota_flow.py"],
+            ["python", "scripts/deploy_state_flows.py", "--state", "all"],
             capture_output=True,
             text=True
         )
         if result.returncode != 0:
-            logger.error(f"Minnesota deployment failed: {result.stderr}")
+            logger.error(f"State flows deployment failed: {result.stderr}")
             return
-        logger.info("Minnesota flow deployed")
-        
-        # Deploy Wisconsin flow (when script exists)
-        wisconsin_deploy = Path("scripts/deploy_wisconsin_flow.py")
-        if wisconsin_deploy.exists():
-            result = subprocess.run(
-                ["python", str(wisconsin_deploy)],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode != 0:
-                logger.error(f"Wisconsin deployment failed: {result.stderr}")
-                return
-            logger.info("Wisconsin flow deployed")
+        logger.info("State flows deployed successfully")
     
     if run_now:
         logger.info("Triggering immediate flow runs...")
@@ -146,26 +139,18 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
         from prefect import get_client
         
         async with get_client() as client:
-            # Run Minnesota flow
-            deployment = await client.read_deployment_by_name(
-                "scrape-minnesota-portal/minnesota-scrape"
-            )
-            flow_run = await client.create_flow_run_from_deployment(
-                deployment_id=deployment.id
-            )
-            logger.info(f"Started Minnesota flow run: {flow_run.id}")
-            
-            # Run Wisconsin flow if deployed
-            try:
-                deployment = await client.read_deployment_by_name(
-                    "scrape-wisconsin-portal/wisconsin-scrape"
-                )
-                flow_run = await client.create_flow_run_from_deployment(
-                    deployment_id=deployment.id
-                )
-                logger.info(f"Started Wisconsin flow run: {flow_run.id}")
-            except Exception as e:
-                logger.warning(f"Wisconsin flow not deployed: {e}")
+            # Run state flows with new deployment names
+            for state, state_name in [("minnesota", "Minnesota"), ("wisconsin", "Wisconsin")]:
+                try:
+                    deployment = await client.read_deployment_by_name(
+                        f"scrape-state-portal/{state}-scrape"
+                    )
+                    flow_run = await client.create_flow_run_from_deployment(
+                        deployment_id=deployment.id
+                    )
+                    logger.info(f"Started {state_name} flow run: {flow_run.id}")
+                except Exception as e:
+                    logger.warning(f"{state_name} flow not deployed: {e}")
 
 @cli.command()
 async def health_check():
@@ -276,12 +261,22 @@ async def run_all(days: int, state: str, parallel: bool):
         # Run states in parallel
         tasks = []
         if state in ['minnesota', 'all']:
-            from flows.scrape_minnesota import scrape_minnesota_portal
-            tasks.append(scrape_minnesota_portal.fn())
+            from flows.base_state_flow import scrape_state_flow
+            from flows.state_configs import MINNESOTA_CONFIG
+            tasks.append(scrape_state_flow.fn(
+                state_config=MINNESOTA_CONFIG,
+                download_documents=download,
+                max_documents=max_documents
+            ))
             
         if state in ['wisconsin', 'all']:
-            from flows.scrape_wisconsin import scrape_wisconsin_portal
-            tasks.append(scrape_wisconsin_portal.fn())
+            from flows.base_state_flow import scrape_state_flow
+            from flows.state_configs import WISCONSIN_CONFIG
+            tasks.append(scrape_state_flow.fn(
+                state_config=WISCONSIN_CONFIG,
+                download_documents=download,
+                max_documents=max_documents
+            ))
             
         results = await asyncio.gather(*tasks, return_exceptions=True)
         

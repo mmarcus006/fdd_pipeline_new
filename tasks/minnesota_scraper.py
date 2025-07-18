@@ -3,10 +3,8 @@
 import asyncio
 import json
 import re
-from datetime import datetime
-from pathlib import Path
 from typing import List, Optional, Dict, Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from tasks.web_scraping import (
     BaseScraper,
@@ -14,16 +12,10 @@ from tasks.web_scraping import (
 )
 from tasks.exceptions import (
     ElementNotFoundError,
-    NavigationTimeoutError,
     WebScrapingException,
 )
 from utils.scraping_utils import (
     clean_text,
-    sanitize_filename,
-    create_document_filename,
-    extract_filing_number,
-    parse_date_formats,
-    extract_year_from_text,
 )
 
 
@@ -917,240 +909,11 @@ class MinnesotaScraper(BaseScraper):
 
         return None
     
-    async def download_and_save_document(
-        self,
-        download_url: str,
-        franchise_name: str,
-        year: Optional[str] = None,
-        filing_number: Optional[str] = None,
-        document_title: Optional[str] = None,
-        output_dir: Optional[Path] = None,
-        skip_existing: bool = True
-    ) -> Optional[Path]:
-        """Download document and save to local filesystem.
-        
-        Args:
-            download_url: URL to download document from
-            franchise_name: Name of the franchise
-            year: Year of the document
-            filing_number: Optional filing number
-            document_title: Optional document title
-            output_dir: Optional output directory
-            skip_existing: Skip if file already exists
-            
-        Returns:
-            Path to saved file or None if download failed
-        """
-        try:
-            # Create filename
-            filename = create_document_filename(
-                franchise_name=franchise_name,
-                year=year or datetime.now().strftime("%Y"),
-                filing_number=filing_number,
-                document_type="FDD"
-            )
-            
-            # Determine output path
-            if not output_dir:
-                output_dir = Path("downloads") / self.source_name
-            
-            filepath = output_dir / filename
-            
-            # Check if file exists
-            if skip_existing and filepath.exists():
-                self.logger.info(
-                    "file_already_exists",
-                    franchise=franchise_name,
-                    filepath=str(filepath)
-                )
-                return filepath
-            
-            # Sync cookies between browser and HTTP client
-            await self.manage_cookies()
-            
-            # Download using streaming method
-            success = await self.download_file_streaming(
-                download_url,
-                filepath,
-                progress_callback=lambda curr, total: self.logger.debug(
-                    "download_progress",
-                    franchise=franchise_name,
-                    progress=f"{curr}/{total}" if total else f"{curr} bytes"
-                )
-            )
-            
-            if success:
-                self.logger.info(
-                    "document_saved",
-                    franchise=franchise_name,
-                    filepath=str(filepath),
-                    title=document_title
-                )
-                return filepath
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(
-                "document_save_failed",
-                franchise=franchise_name,
-                url=download_url,
-                error=str(e)
-            )
-            return None
+    # download_and_save_document method moved to tasks.document_metadata
+    # Use: from tasks.document_metadata import download_and_save_document
     
-    async def process_all_with_downloads(
-        self,
-        output_dir: Optional[Path] = None,
-        limit: Optional[int] = None,
-        skip_existing: bool = True
-    ) -> Dict[str, Any]:
-        """Discover all documents and download them.
-        
-        Args:
-            output_dir: Directory to save downloads
-            limit: Maximum number of documents to process
-            skip_existing: Skip downloading existing files
-            
-        Returns:
-            Dictionary with processing results
-        """
-        results = {
-            "discovered": 0,
-            "downloaded": 0,
-            "failed": 0,
-            "skipped": 0,
-            "documents": []
-        }
-        
-        try:
-            # Discover documents
-            documents = await self.discover_documents()
-            results["discovered"] = len(documents)
-            
-            # Apply limit if specified
-            if limit:
-                documents = documents[:limit]
-            
-            # Process each document
-            for i, doc in enumerate(documents):
-                try:
-                    self.logger.info(
-                        "processing_document",
-                        index=i + 1,
-                        total=len(documents),
-                        franchise=doc.franchise_name
-                    )
-                    
-                    # Extract year from metadata
-                    year = None
-                    if doc.additional_metadata:
-                        year = doc.additional_metadata.get("year")
-                    
-                    # Download document
-                    filepath = await self.download_and_save_document(
-                        download_url=doc.download_url,
-                        franchise_name=doc.franchise_name,
-                        year=year,
-                        filing_number=doc.filing_number,
-                        document_title=doc.additional_metadata.get("title"),
-                        output_dir=output_dir,
-                        skip_existing=skip_existing
-                    )
-                    
-                    if filepath:
-                        if filepath.exists() and skip_existing:
-                            results["skipped"] += 1
-                        else:
-                            results["downloaded"] += 1
-                        
-                        # Add to results with filepath
-                        doc_result = doc.dict()
-                        doc_result["local_filepath"] = str(filepath)
-                        results["documents"].append(doc_result)
-                    else:
-                        results["failed"] += 1
-                    
-                    # Be respectful between downloads
-                    await asyncio.sleep(1)
-                    
-                except Exception as e:
-                    self.logger.error(
-                        "document_processing_failed",
-                        franchise=doc.franchise_name,
-                        error=str(e)
-                    )
-                    results["failed"] += 1
-            
-            return results
-            
-        except Exception as e:
-            self.logger.error(
-                "batch_processing_failed",
-                error=str(e)
-            )
-            results["error"] = str(e)
-            return results
+    # process_all_with_downloads method moved to tasks.document_metadata
+    # Use: from tasks.document_metadata import process_all_documents_with_downloads
     
-    async def export_to_csv(self, documents: List[DocumentMetadata], filepath: Path) -> bool:
-        """Export document metadata to CSV file.
-        
-        Args:
-            documents: List of document metadata to export
-            filepath: Path to save CSV file
-            
-        Returns:
-            True if export successful
-        """
-        import csv
-        
-        try:
-            # Ensure directory exists
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Prepare data for CSV
-            rows = []
-            for doc in documents:
-                # Extract metadata
-                metadata = doc.additional_metadata or {}
-                
-                row = {
-                    "Franchisor": metadata.get("franchisor", ""),
-                    "Franchise Names": doc.franchise_name,
-                    "Document Title": metadata.get("title", ""),
-                    "Year": metadata.get("year", ""),
-                    "File Number": doc.filing_number or "",
-                    "Document Types": doc.document_type,
-                    "Received Date": metadata.get("received_date", ""),
-                    "Added On": metadata.get("added_on", ""),
-                    "Notes": metadata.get("notes", ""),
-                    "Download URL": doc.download_url,
-                    "Document ID": metadata.get("document_id", ""),
-                }
-                
-                rows.append(row)
-            
-            # Write to CSV
-            if rows:
-                fieldnames = list(rows[0].keys())
-                with open(filepath, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                
-                self.logger.info(
-                    "csv_export_completed",
-                    filepath=str(filepath),
-                    row_count=len(rows)
-                )
-                return True
-            
-            return False
-            
-        except Exception as e:
-            self.logger.error(
-                "csv_export_failed",
-                filepath=str(filepath),
-                error=str(e)
-            )
-            return False
+    # export_to_csv method moved to tasks.document_metadata
+    # Use: from tasks.document_metadata import export_documents_to_csv

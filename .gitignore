@@ -6,6 +6,13 @@ __pycache__/
 # C extensions
 *.so
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
 # Distribution / packaging
 .Python
 build/
@@ -162,3 +169,15 @@ cython_debug/
 *~
 # NetBeans
 nbproject/
+
+# Project specific
+downloads/
+*.pdf
+gdrive_cred.json
+logs/*.log
+examples/*_output/
+*_test_data.json
+mn_pagination_results.json
+.claude/
+claude-output/
+scratch/
