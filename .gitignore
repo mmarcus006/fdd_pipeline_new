@@ -12,7 +12,11 @@ __pycache__/
 .LSOverride
 Icon
 ._*
+
+# Credentials and sensitive files
 *_cred*
+gdrive_cred.json
+**/gdrive_cred.json
 
 # Distribution / packaging
 .Python
