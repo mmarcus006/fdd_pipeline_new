@@ -45,8 +45,8 @@ class MinerUAPI:
                             
                             # Extract auth token
                             for cookie in cookies:
-                                if cookie['name'] == 'uaa-token':
-                                    self.auth_token = cookie['value']
+                                if cookie.get('name') == 'uaa-token':
+                                    self.auth_token = cookie.get('value')
                                     
                                     # Verify the auth still works
                                     print("🔍 Verifying saved authentication...")
@@ -153,8 +153,8 @@ class MinerUAPI:
                 
                 # Extract auth token
                 for cookie in cookies:
-                    if cookie['name'] == 'uaa-token':
-                        self.auth_token = cookie['value']
+                    if cookie.get('name') == 'uaa-token':
+                        self.auth_token = cookie.get('value')
                         break
                 
                 if not self.auth_token:
@@ -180,8 +180,8 @@ class MinerUAPI:
                     
                     # Check if we got auth token
                     for cookie in cookies:
-                        if cookie['name'] == 'uaa-token':
-                            self.auth_token = cookie['value']
+                        if cookie.get('name') == 'uaa-token':
+                            self.auth_token = cookie.get('value')
                             print("✅ Found auth token in cookies despite error!")
                             self._setup_session(cookies)
                             
@@ -200,8 +200,10 @@ class MinerUAPI:
         # Build cookie string
         cookie_parts = []
         for cookie in cookies:
-            if cookie['name'] in ['uaa-token', 'opendatalab_session', 'ssouid', 'acw_tc']:
-                cookie_parts.append(f"{cookie['name']}={cookie['value']}")
+            name = cookie.get('name')
+            value = cookie.get('value')
+            if name in ['uaa-token', 'opendatalab_session', 'ssouid', 'acw_tc'] and value:
+                cookie_parts.append(f"{name}={value}")
         
         # Set headers
         self.session.headers.update({

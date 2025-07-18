@@ -17,7 +17,7 @@ from tasks.document_segmentation import (
     SectionValidationResult,
     segment_fdd_document,
 )
-from tasks.document_processing import SectionBoundary
+from models.document_models import SectionBoundary
 
 
 class TestDocumentSegmentationIntegration:

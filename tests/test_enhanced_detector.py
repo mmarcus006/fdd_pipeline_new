@@ -9,7 +9,8 @@ from uuid import uuid4
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from tasks.document_processing import process_document_layout
+from tasks.mineru_processing import process_document_with_mineru, extract_sections_from_mineru
+from models.document_models import DocumentLayout, SectionBoundary
 from utils.fdd_section_detector_integration import create_integrated_detector
 
 
@@ -28,18 +29,39 @@ async def test_enhanced_detector():
     print("-" * 60)
     
     try:
-        # Test the process_document_layout task
-        print("\n1. Testing process_document_layout task...")
-        layout, sections = await process_document_layout(
-            pdf_path=str(sample_pdf),
-            fdd_id=uuid4(),
+        # Test the MinerU document processing
+        print("\n1. Testing MinerU document processing...")
+        # For testing, we need to provide a URL instead of a local path
+        # In a real scenario, this would be a URL from the web scraper
+        pdf_url = f"file://{sample_pdf.absolute()}"
+        fdd_id = uuid4()
+        
+        result = await process_document_with_mineru(
+            pdf_url=pdf_url,
+            fdd_id=fdd_id,
+            franchise_name="Test Franchise",
             timeout_seconds=300
         )
         
-        print(f"✅ Layout processing completed")
+        # Extract sections from MinerU output
+        sections = await extract_sections_from_mineru(
+            mineru_json_path=result["drive_files"]["json"]["path"],
+            fdd_id=fdd_id,
+            total_pages=100  # Approximate, will be determined from JSON
+        )
+        
+        # Create a mock layout object for compatibility
+        layout = DocumentLayout(
+            total_pages=100,
+            model_version="mineru",
+            mineru_output_dir=Path(result["drive_files"]["json"]["path"]).parent,
+            processing_time=0.0
+        )
+        
+        print(f"✅ MinerU processing completed")
+        print(f"   - Task ID: {result['task_id']}")
         print(f"   - Total pages: {layout.total_pages}")
         print(f"   - Model version: {layout.model_version}")
-        print(f"   - MinerU output dir: {layout.mineru_output_dir}")
         print(f"   - Sections detected: {len(sections)}")
         
         if sections:

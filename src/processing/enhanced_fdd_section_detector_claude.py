@@ -24,7 +24,7 @@ from rapidfuzz import fuzz
 import numpy as np
 
 # Project imports
-from tasks.document_processing import SectionBoundary
+from models.document_models import SectionBoundary
 
 
 logger = logging.getLogger(__name__)

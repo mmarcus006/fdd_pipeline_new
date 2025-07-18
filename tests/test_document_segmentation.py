@@ -21,7 +21,7 @@ from tasks.document_segmentation import (
     segment_fdd_document,
     validate_section_quality,
 )
-from tasks.document_processing import SectionBoundary
+from models.document_models import SectionBoundary
 from models.section import ExtractionStatus
 
 

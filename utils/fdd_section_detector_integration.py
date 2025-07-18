@@ -12,7 +12,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-from tasks.document_processing import SectionBoundary, FDDSectionDetector
+from models.document_models import SectionBoundary, FDDSectionDetector
 from src.processing.enhanced_fdd_section_detector_claude import EnhancedFDDSectionDetector
 from utils.logging import PipelineLogger
 

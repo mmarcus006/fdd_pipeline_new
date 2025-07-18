@@ -20,7 +20,7 @@ from config import get_settings
 from models.section import FDDSection, FDDSectionBase, ExtractionStatus
 from models.fdd import FDD
 from tasks.drive_operations import DriveManager
-from tasks.document_processing import (
+from models.document_models import (
     DocumentLayout,
     SectionBoundary,
     FDDSectionDetector,

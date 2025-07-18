@@ -19,7 +19,7 @@ from utils.enhanced_fdd_section_detector import (
     EnhancedFDDSectionDetector,
     FDDSectionCandidate
 )
-from tasks.document_processing import SectionBoundary
+from models.document_models import SectionBoundary
 
 
 class TestEnhancedFDDSectionDetector:
@@ -512,7 +512,7 @@ class TestIntegrationWithExistingSystem:
     
     def test_section_boundary_compatibility(self):
         """Test compatibility with existing SectionBoundary model"""
-        from tasks.document_processing import SectionBoundary
+        from models.document_models import SectionBoundary
         
         # Create boundary using new detector
         boundary = SectionBoundary(

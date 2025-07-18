@@ -9,7 +9,7 @@ from datetime import datetime
 
 from prefect import flow
 
-from tasks.document_processing import process_document_layout
+from tasks.mineru_processing import process_document_with_mineru, extract_sections_from_mineru
 from tasks.document_segmentation import segment_fdd_document
 from tasks.llm_extraction import FDDSectionExtractor
 from utils.database import get_database_manager, serialize_for_db
@@ -81,19 +81,32 @@ async def process_single_fdd_flow(pdf_path: str):
         print("FDD record inserted successfully")
         
 
-        # Step 1: Process document layout and detect sections
-        print("About to call process_document_layout...")
+        # Step 1: Process document with MinerU
+        print("About to call process_document_with_mineru...")
         try:
-            layout, sections = await process_document_layout.fn(
-                pdf_path=str(pdf_file), fdd_id=fdd_id
+            # For local file, we need to convert to a URL format
+            # In production, this would be a proper URL from Google Drive or Supabase
+            pdf_url = f"file://{pdf_file.resolve()}"
+            
+            mineru_results = await process_document_with_mineru.fn(
+                pdf_url=pdf_url,
+                fdd_id=fdd_id,
+                franchise_name=franchisor_name,
+                timeout_seconds=300
             )
-            print(f"Layout result: {layout}")
+            print(f"MinerU processing complete: {mineru_results['task_id']}")
+            
+            # Extract sections from MinerU results
+            sections = await extract_sections_from_mineru.fn(
+                mineru_results=mineru_results,
+                fdd_id=fdd_id
+            )
             print(f"Sections found: {len(sections)}")
         except Exception as e:
-            print(f"Error in process_document_layout: {e}")
+            print(f"Error in MinerU processing: {e}")
             raise
 
-        logger.info(f"Successfully processed document layout. Found {len(sections)} sections.")
+        logger.info(f"Successfully processed document with MinerU. Found {len(sections)} sections.")
         for i, section in enumerate(sections):
             logger.info(f"  Section {i+1}: {section.item_name} (Pages {section.start_page}-{section.end_page})")
 

@@ -12,7 +12,7 @@ from tasks.document_processing_integration import (
     process_document_with_extraction,
     extract_fdd_sections_batch,
 )
-from tasks.document_processing import SectionBoundary, DocumentLayout, LayoutElement
+from models.document_models import SectionBoundary, DocumentLayout, LayoutElement
 from models.section import FDDSection, ExtractionStatus
 
 
@@ -215,7 +215,7 @@ class TestProcessDocumentWithExtraction:
             mock_process.return_value = (mock_layout, mock_sections)
 
             with patch(
-                "tasks.document_processing_integration.validate_section_boundaries"
+                "tests.test_document_processing.validate_section_boundaries"
             ) as mock_validate:
                 mock_validate.return_value = mock_sections
 
@@ -277,7 +277,7 @@ class TestProcessDocumentWithExtraction:
             mock_process.return_value = (mock_layout, mock_sections)
 
             with patch(
-                "tasks.document_processing_integration.validate_section_boundaries"
+                "tests.test_document_processing.validate_section_boundaries"
             ) as mock_validate:
                 mock_validate.return_value = mock_sections
 
@@ -314,7 +314,7 @@ class TestProcessDocumentWithExtraction:
             mock_process.return_value = (mock_layout, mock_sections)
 
             with patch(
-                "tasks.document_processing_integration.validate_section_boundaries"
+                "tests.test_document_processing.validate_section_boundaries"
             ) as mock_validate:
                 mock_validate.return_value = mock_sections
 
