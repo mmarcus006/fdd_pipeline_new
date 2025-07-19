@@ -23,7 +23,7 @@ from pydantic import BaseModel
 import httpx
 
 from config import settings
-from utils.database import DatabaseManager, get_supabase_client
+from storage.database.manager import DatabaseManager, get_supabase_client
 from utils.logging import get_logger
 
 # Logger setup
@@ -297,7 +297,7 @@ async def upload_fdd(
         fdd_id = str(uuid.uuid4())
 
         # Get DriveManager
-        from tasks.drive_operations import get_drive_manager
+        from storage.google_drive import get_drive_manager
 
         drive_manager = get_drive_manager()
 

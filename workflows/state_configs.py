@@ -1,8 +1,8 @@
 """State-specific configurations for the scraping flows."""
 
-from tasks.minnesota_scraper import MinnesotaScraper
-from tasks.wisconsin_scraper import WisconsinScraper
-from flows.base_state_flow import StateConfig
+from scrapers.states.minnesota import MinnesotaScraper
+from scrapers.states.wisconsin import WisconsinScraper
+from workflows.base_state_flow import StateConfig
 
 
 # Minnesota configuration

@@ -7,7 +7,7 @@ from typing import Tuple
 from uuid import UUID
 from datetime import datetime
 
-from tasks.drive_operations import DriveFileMetadata
+from storage.google_drive import DriveFileMetadata
 
 
 class LocalDriveManager:

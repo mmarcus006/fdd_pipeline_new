@@ -40,25 +40,23 @@
 - [x] Retry logic is implemented properly
 - [x] Database integration is clean
 - [x] Google Drive integration works correctly
+- [x] **FIXED**: Undefined variables in `run_all()` function (added --limit and --skip-download options)
+- [x] **FIXED**: Missing imports for parallel execution in main.py
+- [x] **COMPLETED**: Reorganized codebase into logical folders
+- [x] **COMPLETED**: Updated all imports to reflect new structure
+- [x] **COMPLETED**: Updated documentation (README.md, CLAUDE.md)
+- [x] **FIXED**: Updated deployment scripts for new Prefect API (removed deprecated Deployment class)
+- [x] **ADDED**: Created alternative flow execution scripts (serve_flows.py, run_flow.py)
+- [x] **ADDED**: Added flow-help command to explain new execution methods
 
-### ❌ Issues Found
+### ❌ Remaining Issues
 
-1. **Line 293-295 in main.py**: Undefined variables in `run_all()` function
-   - `download` and `max_documents` are used but not defined
-   - Location: `main.py:293-295, 305-306`
-   - **Priority: HIGH**
-
-2. **Missing Import in main.py**: 
-   - The `run_all()` function references state configs but doesn't import them properly for parallel execution
-   - Location: `main.py:286-310`
-   - **Priority: MEDIUM**
-
-3. **Inconsistent Error Handling**:
+1. **Inconsistent Error Handling**:
    - Some async functions use `try/except` while others let exceptions propagate
    - Should standardize error handling approach
    - **Priority: LOW**
 
-4. **Missing Documentation**:
+2. **Missing Documentation**:
    - No API documentation for the scraper classes
    - Missing docstrings for some key methods
    - **Priority: LOW**
@@ -82,32 +80,54 @@
 
 ## Code Organization
 
-### Current Structure
+### Previous Structure
 ```
-tasks/
-├── web_scraping.py         # Base scraper framework
-├── minnesota_scraper.py    # Minnesota implementation
-├── wisconsin_scraper.py    # Wisconsin implementation
-└── exceptions.py           # Scraping exceptions
-
-flows/
-├── base_state_flow.py      # Generic state flow
-├── state_configs.py        # State configurations
-└── complete_pipeline.py    # End-to-end flow
-
-utils/
-└── scraping_utils.py       # Helper functions
-
-models/
-├── scrape_metadata.py      # Scraping audit model
-└── fdd.py                  # FDD document model
+tasks/                      # Mixed responsibilities
+flows/                      # Workflow definitions
+utils/                      # Mixed utilities
+src/processing/             # Processing code
+src/MinerU/                 # MinerU integration
 ```
 
-### Recommended Improvements
-1. Create a `scrapers/` directory to consolidate all scraper-related code
-2. Move state-specific scrapers to `scrapers/states/`
-3. Create a `scrapers/base/` for framework code
-4. Add comprehensive unit tests in `tests/scrapers/`
+### New Structure (COMPLETED)
+```
+scrapers/                   # All web scraping functionality
+├── base/                   
+│   ├── base_scraper.py    # Base framework (from tasks/web_scraping.py)
+│   └── exceptions.py      # Exception hierarchy (from tasks/exceptions.py)
+├── states/                
+│   ├── minnesota.py       # Minnesota scraper (from tasks/minnesota_scraper.py)
+│   └── wisconsin.py       # Wisconsin scraper (from tasks/wisconsin_scraper.py)
+└── utils/
+    └── scraping_utils.py  # Scraping utilities (from utils/scraping_utils.py)
+
+processing/                 # All document processing
+├── extraction/
+│   ├── llm_extraction.py  # LLM extraction (from tasks/llm_extraction.py)
+│   └── multimodal.py      # Multimodal processing (from utils/multimodal_processor.py)
+├── segmentation/
+│   ├── document_segmentation.py  # Segmentation (from tasks/document_segmentation.py)
+│   └── enhanced_detector.py      # Enhanced detection (from src/processing/enhanced_fdd_section_detector_claude_v2.py)
+├── mineru/
+│   ├── mineru_processing.py      # MinerU processing (from tasks/mineru_processing.py)
+│   └── mineru_web_api.py         # MinerU API (from src/MinerU/mineru_web_api.py)
+└── pdf/
+    └── pdf_extractor.py           # PDF extraction (from utils/pdf_extractor.py)
+
+workflows/                  # Prefect workflows
+├── base_state_flow.py     # Base flow (from flows/base_state_flow.py)
+├── state_configs.py       # Configurations (from flows/state_configs.py)
+└── complete_pipeline.py   # Pipeline (from flows/complete_pipeline.py)
+
+storage/                    # Storage integrations
+├── google_drive.py        # Google Drive (from tasks/drive_operations.py)
+└── database/
+    └── manager.py         # Database manager (from utils/database.py)
+
+validation/                 # Data validation
+├── schema_validation.py   # Schema validation (from tasks/schema_validation.py)
+└── business_rules.py      # Business rules (from utils/validation.py)
+```
 
 ## Next Steps
 

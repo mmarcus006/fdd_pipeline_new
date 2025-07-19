@@ -3,6 +3,7 @@
 Deploy State Portal Scraping Flows to Prefect
 
 This script deploys the state portal scraping flows using the new base flow architecture.
+Uses the new Prefect flow.deploy() API instead of the deprecated Deployment class.
 
 Usage:
     python scripts/deploy_state_flows.py --state all
@@ -19,18 +20,17 @@ import click
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from prefect import serve
-from prefect.deployments import Deployment
-from prefect.server.schemas.schedules import CronSchedule
+from prefect.schedules import CronSchedule
 
-from flows.base_state_flow import scrape_state_flow
-from flows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG, get_state_config
+from workflows.base_state_flow import scrape_state_flow
+from workflows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG, get_state_config
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def create_state_deployment(state_code: str) -> Deployment:
-    """Create a deployment for a specific state."""
+async def deploy_state_flow(state_code: str, test_mode: bool = False):
+    """Deploy a flow for a specific state."""
     state_config = get_state_config(state_code)
 
     # Define schedule based on state
@@ -43,48 +43,31 @@ def create_state_deployment(state_code: str) -> Deployment:
         ),  # 7 AM CT daily
     }
 
-    deployment = scrape_state_flow.to_deployment(
-        name=f"{state_config.state_name.lower()}-scrape",
-        description=f"Scrape {state_config.state_name} {state_config.portal_name} portal for FDD documents",
+    deployment_name = f"{state_config.state_name.lower()}-{'test' if test_mode else 'scrape'}"
+    
+    await scrape_state_flow.deploy(
+        name=deployment_name,
+        description=f"{'Test deployment for' if test_mode else 'Scrape'} {state_config.state_name} {state_config.portal_name} portal",
         tags=[
             "state-scraper",
             state_code.lower(),
             state_config.portal_name.lower(),
-            "production",
+            "test" if test_mode else "production",
         ],
-        schedule=schedules.get(state_code),
+        schedules=[schedules.get(state_code)] if not test_mode and state_code in schedules else [],
         parameters={
-            "state_config": state_config.model_dump(),
-            "download_documents": True,
-            "max_documents": None,  # No limit in production
+            "state_config": state_config,
+            "download_documents": not test_mode,
+            "max_documents": 5 if test_mode else None,
         },
         work_pool_name="default-agent-pool",
-        version="2.0",  # Version 2.0 indicates base flow architecture
+        version="2.0-test" if test_mode else "2.0",
     )
 
-    logger.info(f"Created deployment for {state_config.state_name}")
-    return deployment
+    logger.info(f"Deployed {'test ' if test_mode else ''}deployment for {state_config.state_name}")
+    return deployment_name
 
 
-def create_test_deployment(state_code: str) -> Deployment:
-    """Create a test deployment with limited scraping."""
-    state_config = get_state_config(state_code)
-
-    deployment = scrape_state_flow.to_deployment(
-        name=f"{state_config.state_name.lower()}-test",
-        description=f"Test deployment for {state_config.state_name} scraper",
-        tags=["state-scraper", state_code.lower(), "test"],
-        parameters={
-            "state_config": state_config.model_dump(),
-            "download_documents": False,  # Don't download in test mode
-            "max_documents": 5,  # Limit to 5 documents for testing
-        },
-        work_pool_name="default-agent-pool",
-        version="2.0-test",
-    )
-
-    logger.info(f"Created test deployment for {state_config.state_name}")
-    return deployment
 
 
 @click.command()
@@ -98,7 +81,7 @@ def create_test_deployment(state_code: str) -> Deployment:
 async def deploy(state: str, mode: str, serve_flows: bool):
     """Deploy state scraping flows to Prefect."""
 
-    deployments = []
+    deployment_names = []
     states_to_deploy = []
 
     # Determine which states to deploy
@@ -111,26 +94,41 @@ async def deploy(state: str, mode: str, serve_flows: bool):
 
     # Create deployments based on mode
     for state_code in states_to_deploy:
-        if mode in ["production", "both"]:
-            deployments.append(create_state_deployment(state_code))
-
-        if mode in ["test", "both"]:
-            deployments.append(create_test_deployment(state_code))
-
-    logger.info(f"Created {len(deployments)} deployments")
-
-    # Apply deployments
-    for deployment in deployments:
         try:
-            deployment_id = await deployment.apply()
-            logger.info(f"Applied deployment: {deployment.name} (ID: {deployment_id})")
+            if mode in ["production", "both"]:
+                name = await deploy_state_flow(state_code, test_mode=False)
+                deployment_names.append(name)
+
+            if mode in ["test", "both"]:
+                name = await deploy_state_flow(state_code, test_mode=True)
+                deployment_names.append(name)
         except Exception as e:
-            logger.error(f"Failed to apply deployment {deployment.name}: {e}")
+            logger.error(f"Failed to deploy flow for {state_code}: {e}")
+
+    logger.info(f"Deployed {len(deployment_names)} flows")
 
     # Serve flows if requested
-    if serve_flows and deployments:
+    if serve_flows:
         logger.info("Starting flow server...")
-        await serve(*deployments)
+        # For serving, we need to create the flow instances with parameters
+        flows_to_serve = []
+        for state_code in states_to_deploy:
+            state_config = get_state_config(state_code)
+            if mode in ["production", "both"]:
+                flows_to_serve.append(
+                    scrape_state_flow.with_options(
+                        name=f"{state_config.state_name.lower()}-scrape"
+                    )
+                )
+            if mode in ["test", "both"]:
+                flows_to_serve.append(
+                    scrape_state_flow.with_options(
+                        name=f"{state_config.state_name.lower()}-test"
+                    )
+                )
+        
+        if flows_to_serve:
+            await serve(*flows_to_serve)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer
 from supabase import Client
 import logging
 
-from utils.database import get_supabase_client, DatabaseManager
+from storage.database.manager import get_supabase_client, DatabaseManager
 from config import settings
 
 logger = logging.getLogger(__name__)

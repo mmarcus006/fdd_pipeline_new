@@ -8,10 +8,10 @@ import asyncio
 
 from prefect import task, get_run_logger
 
-from utils.database import get_database_manager, serialize_for_db
+from storage.database.manager import get_database_manager, serialize_for_db
 from utils.logging import PipelineLogger
 from models.base import ExtractionStatus
-from tasks.exceptions import (
+from scrapers.base.exceptions import (
     DataStorageException,
     DatabaseConnectionError,
     RecordNotFoundError,

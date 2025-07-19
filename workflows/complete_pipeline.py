@@ -8,11 +8,11 @@ from uuid import UUID, uuid4
 from prefect import flow, task, get_run_logger
 from prefect.task_runners import ConcurrentTaskRunner
 
-from flows.base_state_flow import scrape_state_flow
-from flows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
-from flows.process_single_pdf import process_single_fdd_flow
-from tasks.schema_validation import validate_fdd_sections
-from utils.database import get_database_manager
+from workflows.base_state_flow import scrape_state_flow
+from workflows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
+# from workflows.process_single_pdf import process_single_fdd_flow  # TODO: Create this module
+from validation.schema_validation import validate_fdd_sections
+from storage.database.manager import get_database_manager
 from utils.logging import PipelineLogger
 
 
@@ -73,7 +73,8 @@ async def process_scraped_documents(
             # For now, using local path stored in drive_file_id
             local_path = fdd.get("drive_file_id", "")
             if local_path:
-                await process_single_fdd_flow.fn(local_path)
+                # await process_single_fdd_flow.fn(local_path)  # TODO: Implement PDF processing
+                logger.warning("PDF processing not implemented yet")
                 results["successful"] += 1
                 results["processed_fdds"].append(fdd_id)
             else:

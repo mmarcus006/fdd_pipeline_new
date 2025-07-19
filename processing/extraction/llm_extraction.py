@@ -35,7 +35,7 @@ from models.item20_outlets import Item20OutletsResponse
 from models.item21_financials import Item21FinancialsResponse
 from utils.prompt_loader import get_prompt_loader
 from utils.extraction_monitoring import get_extraction_monitor, MonitoredExtraction
-from tasks.exceptions import (
+from scrapers.base.exceptions import (
     LLMExtractionException,
     ModelInitializationError,
     TokenLimitExceededError,

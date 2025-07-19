@@ -88,13 +88,24 @@ python -m src.api.run
 
 ```
 fdd_pipeline_new/
-├── flows/              # Prefect workflow definitions
-├── tasks/              # Core processing tasks
+├── scrapers/           # Web scraping functionality
+│   ├── base/          # Base scraper framework
+│   ├── states/        # State-specific scrapers
+│   └── utils/         # Scraping utilities
+├── processing/         # Document processing
+│   ├── extraction/    # LLM data extraction
+│   ├── segmentation/  # Document segmentation
+│   ├── mineru/        # MinerU integration
+│   └── pdf/           # PDF utilities
+├── workflows/          # Prefect workflow definitions
+├── storage/            # Storage integrations
+│   ├── database/      # Database management
+│   └── google_drive.py
+├── validation/         # Data validation
 ├── models/             # Pydantic data models
-├── utils/              # Utility functions
+├── utils/              # General utilities
 ├── src/                # Additional source code
-│   ├── api/           # FastAPI endpoints
-│   └── MinerU/        # MinerU Web API integration
+│   └── api/           # FastAPI endpoints
 ├── docs/              # Documentation
 └── main.py            # CLI entry point
 ```

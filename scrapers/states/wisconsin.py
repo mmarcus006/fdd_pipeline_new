@@ -5,16 +5,15 @@ import re
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
-from tasks.web_scraping import (
+from scrapers.base.base_scraper import (
     BaseScraper,
     DocumentMetadata,
 )
-from tasks.exceptions import (
+from scrapers.base.exceptions import (
     ElementNotFoundError,
     WebScrapingException,
 )
-from utils.logging import get_logger
-from utils.scraping_utils import (
+from scrapers.utils.scraping_utils import (
     clean_text,
 )
 

@@ -19,7 +19,7 @@ from prefect import task
 
 from config import get_settings
 from utils.logging import PipelineLogger
-from tasks.drive_operations import get_drive_manager
+from storage.google_drive import get_drive_manager
 from models.section import FDDSection
 
 

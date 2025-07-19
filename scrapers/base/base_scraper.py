@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, AsyncIterator, Tuple
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from playwright.async_api import (
@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from config import get_settings
 from models.scrape_metadata import ScrapeMetadata
 from utils.logging import PipelineLogger
-from utils.scraping_utils import (
+from scrapers.utils.scraping_utils import (
     sanitize_filename,
     get_default_headers,
     parse_date_formats,
@@ -32,7 +32,7 @@ from utils.scraping_utils import (
     normalize_url,
     calculate_retry_delay,
 )
-from tasks.exceptions import (
+from scrapers.base.exceptions import (
     WebScrapingException,
     BrowserInitializationError,
     NavigationTimeoutError,
@@ -96,7 +96,7 @@ class BaseScraper(ABC):
         self.headless = headless
         self.timeout = timeout
         self.settings = get_settings()
-        self.correlation_id = str(prefect_run_id) if prefect_run_id else str(UUID())
+        self.correlation_id = str(prefect_run_id) if prefect_run_id else str(uuid4())
         self.logger = PipelineLogger(
             f"scraper.{source_name.lower()}",
             prefect_run_id=self.correlation_id,

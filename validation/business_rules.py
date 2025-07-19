@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 import statistics
 
 from pydantic import BaseModel, ValidationError
-from tasks.schema_validation import (
+from validation.schema_validation import (
     SchemaValidator,
     ValidationResult,
     ValidationReport,

@@ -9,12 +9,12 @@ from abc import ABC, abstractmethod
 from prefect import flow, task, get_run_logger
 from prefect.task_runners import ConcurrentTaskRunner
 
-from tasks.web_scraping import BaseScraper, DocumentMetadata, create_scraper
-from tasks.exceptions import WebScrapingException
+from scrapers.base.base_scraper import BaseScraper, DocumentMetadata, create_scraper
+from scrapers.base.exceptions import WebScrapingException
 from models.scrape_metadata import ScrapeMetadata
 from models.franchisor import Franchisor
 from models.fdd import FDD, ProcessingStatus
-from utils.database import get_database_manager, serialize_for_db
+from storage.database.manager import get_database_manager, serialize_for_db
 from utils.logging import PipelineLogger
 
 
@@ -321,7 +321,7 @@ async def download_state_documents(
                         await db_manager.batch.batch_upsert("fdds", [fdd_dict])
 
                     # Upload to Google Drive
-                    from tasks.drive_operations import get_drive_manager
+                    from storage.google_drive import get_drive_manager
 
                     drive_manager = get_drive_manager()
 

@@ -39,7 +39,7 @@ import json
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.logging import get_logger
-from utils.database import get_database_manager, serialize_for_db
+from storage.database.manager import get_database_manager, serialize_for_db
 from config import get_settings
 
 logger = get_logger(__name__)
@@ -59,8 +59,8 @@ def cli():
 @click.option("--test-mode", is_flag=True, help="Run in test mode with reduced dataset")
 async def scrape(state: str, limit: Optional[int], test_mode: bool):
     """Run web scraping for state portals"""
-    from flows.base_state_flow import scrape_state_flow
-    from flows.state_configs import get_state_config
+    from workflows.base_state_flow import scrape_state_flow
+    from workflows.state_configs import get_state_config
 
     logger.info(f"Starting scraping for: {state}")
 
@@ -100,23 +100,28 @@ async def scrape(state: str, limit: Optional[int], test_mode: bool):
 @click.option("--skip-db", is_flag=True, help="Skip database operations for testing")
 async def process_pdf(path: str, franchise_name: Optional[str], skip_db: bool):
     """Process a single PDF file through the pipeline"""
-    from flows.process_single_pdf import process_single_fdd_flow
-
-    pdf_path = Path(path)
-    if not pdf_path.exists():
-        click.echo(f"Error: PDF file not found at {path}", err=True)
-        return
-
-    logger.info(f"Processing PDF: {pdf_path}")
-
-    try:
-        # The flow will handle all processing steps
-        await process_single_fdd_flow.fn(str(pdf_path))
-        logger.info("PDF processing completed successfully")
-
-    except Exception as e:
-        logger.error(f"PDF processing failed: {e}", exc_info=True)
-        raise
+    # TODO: Implement process_single_pdf workflow
+    logger.error("PDF processing workflow not yet implemented")
+    click.echo("Error: PDF processing workflow not yet implemented", err=True)
+    return
+    
+    # from workflows.process_single_pdf import process_single_fdd_flow
+    # 
+    # pdf_path = Path(path)
+    # if not pdf_path.exists():
+    #     click.echo(f"Error: PDF file not found at {path}", err=True)
+    #     return
+    # 
+    # logger.info(f"Processing PDF: {pdf_path}")
+    # 
+    # try:
+    #     # The flow will handle all processing steps
+    #     await process_single_fdd_flow.fn(str(pdf_path))
+    #     logger.info("PDF processing completed successfully")
+    # 
+    # except Exception as e:
+    #     logger.error(f"PDF processing failed: {e}", exc_info=True)
+    #     raise
 
 
 @cli.command()
@@ -124,13 +129,19 @@ async def process_pdf(path: str, franchise_name: Optional[str], skip_db: bool):
 @click.option("--schedule", is_flag=True, help="Enable scheduled runs")
 @click.option("--run-now", is_flag=True, help="Run immediately after deployment")
 async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
-    """Set up and run Prefect orchestration"""
-    import subprocess
-
+    """Set up and run Prefect orchestration
+    
+    Note: The Prefect Deployment API has changed. Use one of these methods:
+    1. Direct execution: python main.py scrape --state minnesota
+    2. Serve locally: python scripts/serve_flows.py --state all
+    3. Deploy to Prefect: python scripts/deploy_state_flows.py --state all
+    """
     if deploy:
-        logger.info("Deploying flows to Prefect...")
-
+        logger.info("Note: Using new Prefect deployment API...")
+        logger.info("For local testing, consider using: python scripts/serve_flows.py")
+        
         # Deploy state flows using new deployment script
+        import subprocess
         result = subprocess.run(
             ["python", "scripts/deploy_state_flows.py", "--state", "all"],
             capture_output=True,
@@ -138,6 +149,7 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
         )
         if result.returncode != 0:
             logger.error(f"State flows deployment failed: {result.stderr}")
+            logger.error("Try running flows directly with: python main.py scrape --state all")
             return
         logger.info("State flows deployed successfully")
 
@@ -165,9 +177,42 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
 
 
 @cli.command()
+def flow_help():
+    """Show help for running flows with the new Prefect API"""
+    click.echo("""
+FDD Pipeline Flow Execution Guide
+=================================
+
+The Prefect Deployment API has changed. Here are the recommended ways to run flows:
+
+1. DIRECT EXECUTION (Simplest for testing):
+   python main.py scrape --state minnesota
+   python main.py scrape --state wisconsin --limit 5
+   python main.py scrape --state all --test-mode
+
+2. LOCAL SERVING (For development with Prefect UI):
+   python scripts/serve_flows.py --state all
+   # Then trigger runs via Prefect UI at http://localhost:4200
+
+3. RUN FLOWS DIRECTLY (Without deployment):
+   python scripts/run_flow.py --state minnesota
+   python scripts/run_flow.py --state wisconsin --test-mode --limit 5
+
+4. DEPLOY TO PREFECT (For production):
+   python scripts/deploy_state_flows.py --state all --mode production
+   python scripts/deploy_state_flows.py --state minnesota --mode test
+
+5. PROCESS SINGLE PDF:
+   python main.py process-pdf --path /path/to/fdd.pdf
+
+For more information, see the scripts in the scripts/ directory.
+""")
+
+
+@cli.command()
 async def health_check():
     """Check health of all pipeline components"""
-    from utils.database import get_database_manager
+    from storage.database.manager import get_database_manager
 
     logger.info("Running pipeline health check...")
 
@@ -290,8 +335,8 @@ async def run_all(days: int, state: str, parallel: bool, limit: Optional[int], s
         # Run states in parallel
         tasks = []
         # Always include Minnesota when state is "all"
-        from flows.base_state_flow import scrape_state_flow
-        from flows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
+        from workflows.base_state_flow import scrape_state_flow
+        from workflows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
 
         tasks.append(
             scrape_state_flow.fn(
@@ -372,12 +417,13 @@ def main():
 
             # Create an async wrapper
             async def run_async():
-                # Parse arguments
-                ctx = cli.make_context("main", sys.argv[1:])
-                # Get the command
-                cmd = cli.commands[command]
-                # Run it
-                await cmd.callback(**ctx.params)
+                # Use Click's built-in context handling
+                with cli.make_context('main', sys.argv[1:]) as ctx:
+                    # Get the command and its context
+                    cmd = cli.commands[command]
+                    # Invoke the command with its parsed parameters
+                    with cmd.make_context(command, ctx.args, parent=ctx) as cmd_ctx:
+                        await cmd.callback(**cmd_ctx.params)
 
             # Run the async command
             try:

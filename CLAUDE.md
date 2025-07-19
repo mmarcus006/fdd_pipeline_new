@@ -15,24 +15,25 @@ This is an automated Franchise Disclosure Document (FDD) processing pipeline tha
 
 ### Core Components
 
-1. **Web Scrapers** (`tasks/`):
-   - `BaseScraper`: Abstract base class with common scraping functionality (Playwright browser automation)
-   - `MinnesotaScraper`: Scrapes Minnesota CARDS portal
-   - `WisconsinScraper`: Scrapes Wisconsin DFI portal
-   - `web_scraping.py`: Factory pattern for scraper instantiation
+1. **Web Scrapers** (`scrapers/`):
+   - `base/base_scraper.py`: Abstract base class with common scraping functionality (Playwright browser automation)
+   - `base/exceptions.py`: Custom exception hierarchy for error handling
+   - `states/minnesota.py`: Scrapes Minnesota CARDS portal
+   - `states/wisconsin.py`: Scrapes Wisconsin DFI portal
+   - `utils/scraping_utils.py`: Common scraping utilities
 
-2. **Document Processing** (`tasks/` & `src/`):
-   - `mineru_processing.py`: Task wrapper for MinerU Web API
-   - `src/MinerU/mineru_web_api.py`: MinerU Web API client with browser authentication
-   - `document_segmentation.py`: FDD section detection and boundary extraction
-   - `src/processing/enhanced_fdd_section_detector_claude_v2.py`: Advanced section detection using Claude
-   - `pdf_extractor.py`: Basic PDF text extraction utilities
+2. **Document Processing** (`processing/`):
+   - `mineru/mineru_processing.py`: Task wrapper for MinerU Web API
+   - `mineru/mineru_web_api.py`: MinerU Web API client with browser authentication
+   - `segmentation/document_segmentation.py`: FDD section detection and boundary extraction
+   - `segmentation/enhanced_detector.py`: Advanced section detection using Claude
+   - `pdf/pdf_extractor.py`: Basic PDF text extraction utilities
 
-3. **Data Extraction** (`tasks/`):
+3. **Data Extraction** (`processing/extraction/`):
    - `llm_extraction.py`: Multi-model LLM framework with routing and fallback
+   - `multimodal.py`: Handles image and table extraction
    - Supports Gemini, OpenAI, and Ollama models
    - Item-specific extraction for FDD sections
-   - `utils/multimodal_processor.py`: Handles image and table extraction
 
 4. **Data Models** (`models/`):
    - Pydantic models for all database entities
@@ -40,13 +41,21 @@ This is an automated Franchise Disclosure Document (FDD) processing pipeline tha
    - Composite models for complex data structures
    - JSON storage models for flexible item data
 
-5. **Workflows** (`flows/`):
+5. **Workflows** (`workflows/`):
    - `base_state_flow.py`: Generic state scraping flow (unified implementation)
    - `state_configs.py`: State-specific configurations
    - `process_single_pdf.py`: Single PDF processing flow
    - `complete_pipeline.py`: End-to-end orchestration flow
 
-6. **API Layer** (`src/api/`):
+6. **Storage** (`storage/`):
+   - `google_drive.py`: Google Drive integration for document storage
+   - `database/manager.py`: Database connection and operations management
+
+7. **Validation** (`validation/`):
+   - `schema_validation.py`: Pydantic schema validation
+   - `business_rules.py`: Business logic validation
+
+8. **API Layer** (`src/api/`):
    - `main.py`: FastAPI application with REST endpoints
    - `run.py`: Uvicorn server runner
    - Endpoints for document processing and data retrieval
@@ -175,8 +184,8 @@ MAX_CONCURRENT_EXTRACTIONS=5
 
 ### Adding New States
 To add a new state (e.g., California):
-1. Create scraper class: `tasks/california_scraper.py` extending `BaseScraper`
-2. Add configuration to `flows/state_configs.py`:
+1. Create scraper class: `scrapers/states/california.py` extending `BaseScraper`
+2. Add configuration to `workflows/state_configs.py`:
    ```python
    CALIFORNIA_CONFIG = StateConfig(
        state_code="CA",
@@ -187,7 +196,8 @@ To add a new state (e.g., California):
    )
    ```
 3. Update `STATE_CONFIGS` dictionary in `state_configs.py`
-4. That's it! The state is now available in CLI and flows
+4. Update `scrapers/states/__init__.py` to export the new scraper
+5. That's it! The state is now available in CLI and flows
 
 ## Performance Considerations
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from tasks.web_scraping import DocumentMetadata, BaseScraper
+from scrapers.base.base_scraper import DocumentMetadata, BaseScraper
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -128,7 +128,7 @@ async def download_and_save_document(
                 year = datetime.now().year
 
         # Create filename
-        from utils.scraping_utils import create_document_filename
+        from scrapers.utils.scraping_utils import create_document_filename
 
         filename = create_document_filename(
             franchise_name=franchise_name,

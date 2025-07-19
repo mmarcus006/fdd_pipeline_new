@@ -19,13 +19,13 @@ from pydantic import BaseModel, Field
 from config import get_settings
 from models.section import FDDSection, FDDSectionBase, ExtractionStatus
 from models.fdd import FDD
-from tasks.drive_operations import DriveManager
+from storage.google_drive import DriveManager
 from models.document_models import (
     DocumentLayout,
     SectionBoundary,
     FDDSectionDetector,
 )
-from utils.database import get_database_manager
+from storage.database.manager import get_database_manager
 from utils.logging import PipelineLogger
 
 

@@ -6,15 +6,15 @@ import re
 from typing import List, Optional, Dict, Any
 from urllib.parse import urljoin
 
-from tasks.web_scraping import (
+from scrapers.base.base_scraper import (
     BaseScraper,
     DocumentMetadata,
 )
-from tasks.exceptions import (
+from scrapers.base.exceptions import (
     ElementNotFoundError,
     WebScrapingException,
 )
-from utils.scraping_utils import (
+from scrapers.utils.scraping_utils import (
     clean_text,
 )
 
@@ -160,7 +160,7 @@ class MinnesotaScraper(BaseScraper):
             self.logger.info(
                 "minnesota_cards_document_discovery_completed",
                 documents_found=len(documents),
-                pages_processed=page_num,
+                pages_processed=page_num
             )
 
             return documents

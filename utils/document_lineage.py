@@ -12,7 +12,7 @@ from enum import Enum
 import logging
 from dataclasses import dataclass
 
-from utils.database import DatabaseManager
+from storage.database.manager import DatabaseManager
 from utils.logging import get_logger
 from models.fdd import FDD, DocumentType, ProcessingStatus
 
