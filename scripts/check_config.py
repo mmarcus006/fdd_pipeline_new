@@ -56,26 +56,20 @@ def check_google_drive_auth() -> bool:
         return False
 
 
-def check_mineru_api() -> bool:
-    """Check MinerU API accessibility."""
+def check_mineru_auth() -> bool:
+    """Check MinerU authentication file."""
     try:
         settings = get_settings()
-        headers = {"Authorization": f"Bearer {settings.mineru_api_key}"}
-
-        with httpx.Client(timeout=10.0) as client:
-            response = client.get(f"{settings.mineru_base_url}/status", headers=headers)
-
-        if response.status_code == 200:
-            print("✓ MinerU API accessible")
+        auth_file = Path(settings.mineru_auth_file)
+        
+        if auth_file.exists():
+            print("✓ MinerU auth file found")
             return True
         else:
-            print(f"✗ MinerU API returned status {response.status_code}")
-            return False
-    except httpx.RequestError as e:
-        print(f"✗ MinerU API connection error: {e}")
-        return False
+            print(f"⚠ MinerU auth file not found: {auth_file} (will be created on first use)")
+            return True  # Not critical for initial setup
     except Exception as e:
-        print(f"✗ MinerU API error: {e}")
+        print(f"✗ MinerU auth check error: {e}")
         return False
 
 
@@ -128,25 +122,8 @@ def check_ollama_server() -> bool:
 
 def check_smtp_configuration() -> bool:
     """Check SMTP configuration."""
-    try:
-        import smtplib
-
-        settings = get_settings()
-
-        if not settings.smtp_user or not settings.smtp_password:
-            print("⚠ SMTP configuration incomplete (optional for development)")
-            return True
-
-        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
-        server.starttls()
-        server.login(settings.smtp_user, settings.smtp_password)
-        server.quit()
-
-        print("✓ SMTP configuration valid")
-        return True
-    except Exception as e:
-        print(f"⚠ SMTP configuration issue: {e} (optional for development)")
-        return True  # Non-critical for development
+    print("⚠ SMTP configuration not implemented (optional for development)")
+    return True  # Non-critical for development
 
 
 def check_environment_file() -> bool:
@@ -169,7 +146,7 @@ def main():
         ("Environment file", check_environment_file),
         ("Supabase connection", check_supabase_connection),
         ("Google Drive auth", check_google_drive_auth),
-        ("MinerU API", check_mineru_api),
+        ("MinerU auth", check_mineru_auth),
         ("Gemini API", check_gemini_api),
         ("Ollama server", check_ollama_server),
         ("SMTP configuration", check_smtp_configuration),

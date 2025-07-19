@@ -260,7 +260,9 @@ async def health_check():
     "--state", type=click.Choice(["minnesota", "wisconsin", "all"]), default="all"
 )
 @click.option("--parallel", is_flag=True, help="Run states in parallel")
-async def run_all(days: int, state: str, parallel: bool):
+@click.option("--limit", type=int, help="Limit number of documents to process")
+@click.option("--skip-download", is_flag=True, help="Skip downloading documents")
+async def run_all(days: int, state: str, parallel: bool, limit: Optional[int], skip_download: bool):
     """Run complete pipeline for all configured states"""
     from datetime import timedelta
 
@@ -279,33 +281,34 @@ async def run_all(days: int, state: str, parallel: bool):
 
     logger.info(f"Processing period: {start_date.date()} to {end_date.date()}")
 
+    # Set parameters for scraping
+    download_documents = not skip_download
+    max_documents = limit
+
     # Run scrapers
     if parallel and state == "all":
         # Run states in parallel
         tasks = []
-        if state in ["minnesota", "all"]:
-            from flows.base_state_flow import scrape_state_flow
-            from flows.state_configs import MINNESOTA_CONFIG
+        # Always include Minnesota when state is "all"
+        from flows.base_state_flow import scrape_state_flow
+        from flows.state_configs import MINNESOTA_CONFIG, WISCONSIN_CONFIG
 
-            tasks.append(
-                scrape_state_flow.fn(
-                    state_config=MINNESOTA_CONFIG,
-                    download_documents=download,
-                    max_documents=max_documents,
-                )
+        tasks.append(
+            scrape_state_flow.fn(
+                state_config=MINNESOTA_CONFIG,
+                download_documents=download_documents,
+                max_documents=max_documents,
             )
+        )
 
-        if state in ["wisconsin", "all"]:
-            from flows.base_state_flow import scrape_state_flow
-            from flows.state_configs import WISCONSIN_CONFIG
-
-            tasks.append(
-                scrape_state_flow.fn(
-                    state_config=WISCONSIN_CONFIG,
-                    download_documents=download,
-                    max_documents=max_documents,
-                )
+        # Always include Wisconsin when state is "all"
+        tasks.append(
+            scrape_state_flow.fn(
+                state_config=WISCONSIN_CONFIG,
+                download_documents=download_documents,
+                max_documents=max_documents,
             )
+        )
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -316,7 +319,7 @@ async def run_all(days: int, state: str, parallel: bool):
                 logger.info(f"Flow {i} completed successfully")
     else:
         # Run states sequentially
-        await scrape(state=state, limit=None, test_mode=False)
+        await scrape(state=state, limit=max_documents, test_mode=skip_download)
 
     # Get processing statistics
     db = get_database_manager()

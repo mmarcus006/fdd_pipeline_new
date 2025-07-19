@@ -11,7 +11,7 @@ This is an automated Franchise Disclosure Document (FDD) processing pipeline tha
 - **Google Drive Integration**: Automatic document storage and organization in Google Drive
 - **Workflow Orchestration**: Prefect-based workflow management with retry logic and monitoring
 
-## Architecture (Updated)
+## Architecture (Current Implementation)
 
 ### Core Components
 
@@ -19,28 +19,37 @@ This is an automated Franchise Disclosure Document (FDD) processing pipeline tha
    - `BaseScraper`: Abstract base class with common scraping functionality (Playwright browser automation)
    - `MinnesotaScraper`: Scrapes Minnesota CARDS portal
    - `WisconsinScraper`: Scrapes Wisconsin DFI portal
+   - `web_scraping.py`: Factory pattern for scraper instantiation
 
-2. **Document Processing** (`tasks/`):
-   - `document_processing.py`: MinerU integration for PDF layout analysis
+2. **Document Processing** (`tasks/` & `src/`):
+   - `mineru_processing.py`: Task wrapper for MinerU Web API
+   - `src/MinerU/mineru_web_api.py`: MinerU Web API client with browser authentication
    - `document_segmentation.py`: FDD section detection and boundary extraction
+   - `src/processing/enhanced_fdd_section_detector_claude_v2.py`: Advanced section detection using Claude
    - `pdf_extractor.py`: Basic PDF text extraction utilities
 
 3. **Data Extraction** (`tasks/`):
    - `llm_extraction.py`: Multi-model LLM framework with routing and fallback
    - Supports Gemini, OpenAI, and Ollama models
    - Item-specific extraction for FDD sections
+   - `utils/multimodal_processor.py`: Handles image and table extraction
 
 4. **Data Models** (`models/`):
    - Pydantic models for all database entities
    - Item-specific response models (Item5Fees, Item6OtherFees, etc.)
    - Composite models for complex data structures
+   - JSON storage models for flexible item data
 
 5. **Workflows** (`flows/`):
-   - **NEW**: `base_state_flow.py`: Generic state scraping flow (replaces duplicate code)
-   - **NEW**: `state_configs.py`: State-specific configurations
-   - `scrape_minnesota.py` / `scrape_wisconsin.py`: Now thin wrappers with deprecation warnings
+   - `base_state_flow.py`: Generic state scraping flow (unified implementation)
+   - `state_configs.py`: State-specific configurations
    - `process_single_pdf.py`: Single PDF processing flow
    - `complete_pipeline.py`: End-to-end orchestration flow
+
+6. **API Layer** (`src/api/`):
+   - `main.py`: FastAPI application with REST endpoints
+   - `run.py`: Uvicorn server runner
+   - Endpoints for document processing and data retrieval
 
 ## Database Schema
 
@@ -114,21 +123,40 @@ psql -d your_database -f migrations/002_structured_data_tables.sql
 ```bash
 # Database
 SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_KEY=your_service_key
 
 # LLM APIs
 GEMINI_API_KEY=your_gemini_key
-OPENAI_API_KEY=your_openai_key
+OPENAI_API_KEY=your_openai_key  # Optional, for fallback
+OLLAMA_BASE_URL=http://localhost:11434  # For local models
 
 # Google Drive
+GDRIVE_CREDS_JSON=gdrive_cred.json  # Path to service account JSON
 GDRIVE_FOLDER_ID=root_folder_id
+
+# MinerU Web API
+MINERU_AUTH_FILE=mineru_auth.json  # Browser auth storage
+
+# Section Detection
+USE_ENHANCED_SECTION_DETECTION=true
+ENHANCED_DETECTION_CONFIDENCE_THRESHOLD=0.7
+ENHANCED_DETECTION_MIN_FUZZY_SCORE=80
+
+# Application Settings
+DEBUG=false
+LOG_LEVEL=INFO
+MAX_CONCURRENT_EXTRACTIONS=5
 ```
 
-### Key Settings
-- Retry attempts: 3 (configurable)
+### Key Settings (config.py)
+- Retry attempts: 3 (configurable per task)
 - Request timeout: 30 seconds
 - Document processing timeout: 5 minutes
 - LLM extraction timeout: 60 seconds per section
+- MinerU processing timeout: 300 seconds
+- Enhanced section detection: Enabled by default
+- Concurrent extractions: 5 (prevents rate limiting)
 
 ## Refactoring Status (Completed)
 
@@ -190,10 +218,48 @@ To add a new state (e.g., California):
 - Document hashes for deduplication and integrity
 - No sensitive data logged
 
+## Troubleshooting
+
+### Common Issues
+
+1. **MinerU Authentication Failed**
+   - Delete `mineru_auth.json` and re-authenticate
+   - Ensure Playwright browsers are installed: `playwright install chromium`
+   - Check if MinerU Web API is accessible
+
+2. **Database Connection Issues**
+   - Verify Supabase URL and service key
+   - Check if tables exist: `python main.py health-check`
+   - Run migrations if needed
+
+3. **Scraping Failures**
+   - State portals may change their structure
+   - Check browser automation with `DEBUG=true`
+   - Verify network connectivity to state portals
+
+4. **LLM Extraction Errors**
+   - Ensure API keys are valid
+   - Check rate limits for your API tier
+   - For Ollama, ensure models are pulled: `ollama pull llama3`
+
+5. **Google Drive Upload Issues**
+   - Verify service account credentials
+   - Check folder permissions
+   - Ensure quota hasn't been exceeded
+
+### Debug Mode
+
+Enable detailed logging:
+```bash
+DEBUG=true LOG_LEVEL=DEBUG python main.py scrape --state minnesota
+```
+
 ## Future Enhancements
 1. Add more state portals (CA, NY, IL)
 2. Implement incremental scraping (only new documents)
 3. Add data validation and quality scoring
-4. Build API layer for data access
+4. Enhance API layer with authentication
 5. Implement automated testing for scrapers
 6. Add document change detection and diff tracking
+7. Create admin dashboard for monitoring
+8. Add webhook notifications for pipeline events

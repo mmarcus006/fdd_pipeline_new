@@ -24,7 +24,7 @@ graph TB
     end
     
     subgraph "Processing Layer"
-        MU[MinerU<br/>Layout Analysis]
+        MU[MinerU Web API<br/>Layout Analysis]
         SEG[Document<br/>Segmentation]
         LLM[LLM Extraction<br/>Instructor]
     end
@@ -109,23 +109,28 @@ Google Drive Structure:
 **Purpose**: Transform unstructured PDFs into structured, queryable data.
 
 **Pipeline Stages**:
-1. **Layout Analysis** (MinerU API)
-   - Detect tables, text blocks, titles
-   - Generate document structure JSON
+1. **Layout Analysis** (MinerU Web API)
+   - Browser-based authentication workflow
+   - Cloud-based PDF processing
+   - Advanced table and structure detection
+   - Returns structured JSON and markdown
    
 2. **Section Identification**
-   - Rule-based header detection
-   - Fuzzy matching for non-standard formats
-   - Page range calculation
+   - Enhanced detection with Claude LLM (v2)
+   - Rule-based header detection with fuzzy matching
+   - Confidence scoring for ambiguous sections
+   - Page range calculation with overlap handling
    
 3. **Document Segmentation**
-   - Split into 25 individual PDFs
+   - Split into 25 individual PDFs (Items 0-23 + appendix)
    - Maintain page number mapping
+   - Handle multi-page sections
    
 4. **LLM Extraction**
-   - Section-specific prompts
-   - Structured output via Instructor
-   - Multi-model fallback strategy
+   - Section-specific prompts loaded from YAML
+   - Structured output via Instructor framework
+   - Multi-model routing based on complexity
+   - Automatic retry with validation
 
 ### 4. Validation Layer
 
@@ -211,6 +216,22 @@ def process_state_fdds(state: str):
 - Email alerts on failure
 
 ## Technology Decisions
+
+### Why MinerU Web API?
+
+**Pros**:
+- State-of-the-art PDF layout analysis
+- No local GPU/compute requirements
+- Handles complex table structures
+- Consistent results across documents
+
+**Cons**:
+- Requires browser authentication
+- Rate limits on free tier
+- Network dependency
+
+**Alternative Considered**: Local PDF processing
+- More control but significantly worse accuracy
 
 ### Why Google Drive?
 
@@ -312,15 +333,23 @@ def select_model(section: int, complexity: str) -> str:
 ### Bottlenecks & Mitigation
 1. **MinerU API Rate Limits**
    - Solution: Queue with rate limiting
-   - Future: Self-hosted MinerU
+   - Authentication caching for session reuse
+   - Future: Premium tier or self-hosted option
 
 2. **LLM API Costs**
-   - Solution: Local models for simple tasks
+   - Solution: Ollama for simple tasks
+   - Model routing based on complexity
    - Future: Fine-tuned models
 
 3. **Database Connections**
-   - Solution: Connection pooling
+   - Solution: Connection pooling via Supabase
+   - Batch operations where possible
    - Future: Read replicas
+
+4. **Browser Automation Stability**
+   - Solution: Retry logic with exponential backoff
+   - Headless mode for production
+   - Future: API-only authentication
 
 ## Monitoring & Observability
 

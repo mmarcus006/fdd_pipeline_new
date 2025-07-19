@@ -37,64 +37,64 @@ async def process_scraped_documents(
         return results
 
     # Get FDD records that were created during scraping
-    async with get_database_manager() as db_manager:
-        # Find FDDs created in the last run
-        recent_fdds = await db_manager.get_records_by_filter(
-            "fdds",
-            {
-                "processing_status": "pending",
-                "created_at": {"$gte": scrape_results["timestamp"]},
-            },
-            limit=max_documents,
-        )
+    db_manager = get_database_manager()
+    # Find FDDs created in the last run
+    recent_fdds = await db_manager.get_records_by_filter(
+        "fdds",
+        {
+            "processing_status": "pending",
+            "created_at": {"$gte": scrape_results["timestamp"]},
+        },
+        limit=max_documents,
+    )
 
-        logger.info(f"Found {len(recent_fdds)} FDDs to process")
+    logger.info(f"Found {len(recent_fdds)} FDDs to process")
 
-        for fdd in recent_fdds:
-            try:
-                fdd_id = fdd["id"]
-                drive_path = fdd.get("drive_path", "")
+    for fdd in recent_fdds:
+        try:
+            fdd_id = fdd["id"]
+            drive_path = fdd.get("drive_path", "")
 
-                if not drive_path:
-                    logger.warning(f"No drive path for FDD {fdd_id}")
-                    results["failed"] += 1
-                    continue
+            if not drive_path:
+                logger.warning(f"No drive path for FDD {fdd_id}")
+                results["failed"] += 1
+                continue
 
-                # Process the document
-                logger.info(f"Processing FDD {fdd_id} from {drive_path}")
+            # Process the document
+            logger.info(f"Processing FDD {fdd_id} from {drive_path}")
 
-                # Update status to processing
-                await db_manager.update_record(
-                    "fdds", fdd_id, {"processing_status": "processing"}
-                )
+            # Update status to processing
+            await db_manager.update_record(
+                "fdds", fdd_id, {"processing_status": "processing"}
+            )
 
-                # Run document processing flow
-                # Note: In production, this would fetch from Google Drive
-                # For now, using local path stored in drive_file_id
-                local_path = fdd.get("drive_file_id", "")
-                if local_path:
-                    await process_single_fdd_flow.fn(local_path)
-                    results["successful"] += 1
-                    results["processed_fdds"].append(fdd_id)
-                else:
-                    logger.error(f"No local path for FDD {fdd_id}")
-                    results["failed"] += 1
-
-            except Exception as e:
-                logger.error(f"Failed to process FDD {fdd.get('id')}: {e}")
+            # Run document processing flow
+            # Note: In production, this would fetch from Google Drive
+            # For now, using local path stored in drive_file_id
+            local_path = fdd.get("drive_file_id", "")
+            if local_path:
+                await process_single_fdd_flow.fn(local_path)
+                results["successful"] += 1
+                results["processed_fdds"].append(fdd_id)
+            else:
+                logger.error(f"No local path for FDD {fdd_id}")
                 results["failed"] += 1
 
-                # Update status to failed
-                try:
-                    await db_manager.update_record(
-                        "fdds",
-                        fdd["id"],
-                        {"processing_status": "failed", "processing_error": str(e)},
-                    )
-                except:
-                    pass
+        except Exception as e:
+            logger.error(f"Failed to process FDD {fdd.get('id')}: {e}")
+            results["failed"] += 1
 
-            results["total_processed"] += 1
+            # Update status to failed
+            try:
+                await db_manager.update_record(
+                    "fdds",
+                    fdd["id"],
+                    {"processing_status": "failed", "processing_error": str(e)},
+                )
+            except:
+                pass
+
+        results["total_processed"] += 1
 
     return results
 

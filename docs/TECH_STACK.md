@@ -23,13 +23,18 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Handles JavaScript-heavy sites
   - Built-in wait strategies
   - Headless and headed modes
+  - Used for state portal scraping
+  - MinerU Web API authentication
+  - Chromium browser required: `playwright install chromium`
 - **[BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/)** (4.12+) - HTML parsing
   - Simple API for navigating HTML
   - Works with requests/httpx responses
+  - Used for parsing portal search results
 - **[httpx](https://www.python-httpx.org/)** (0.25+) - Modern HTTP client
   - Async/sync support
   - Connection pooling
   - Better than requests for production use
+  - Used for API calls and file downloads
 
 ## Data Processing & Validation
 - **[Pydantic](https://docs.pydantic.dev/)** (2.5+) - Data validation using Python type annotations
@@ -75,14 +80,21 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Cost-effective for simple tasks
 
 ### Document Processing
-- **MinerU API Client** (custom) - Layout analysis
-  - Table detection
-  - Section identification
-  - OCR integration
+- **MinerU Web API** (custom client) - Advanced PDF analysis
+  - Cloud-based processing (no local GPU needed)
+  - Browser-based authentication via Playwright
+  - Table and layout detection
+  - Returns structured JSON and markdown
+  - Located in `src/MinerU/mineru_web_api.py`
 - **[PyPDF2](https://pypdf2.readthedocs.io/)** (3.0+) - PDF manipulation
-  - Page splitting
+  - Page splitting for section extraction
   - Metadata extraction
   - Text extraction fallback
+  - Used in `utils/pdf_extractor.py`
+- **[fitz (PyMuPDF)](https://pymupdf.readthedocs.io/)** (1.23+) - Advanced PDF operations
+  - Better text extraction than PyPDF2
+  - Image extraction from PDFs
+  - Page rendering capabilities
 
 ### Embeddings & Similarity
 - **[sentence-transformers](https://www.sbert.net/)** (2.2+) - Semantic embeddings
@@ -147,11 +159,26 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Performance
 - **[python-json-logger](https://github.com/madzak/python-json-logger)** (2.0+) - JSON log formatting
 
+## Additional Dependencies
+- **[python-magic](https://github.com/ahupp/python-magic)** (0.4+) - File type detection
+  - MIME type identification
+  - Binary file validation
+- **[Pillow](https://python-pillow.org/)** (10.0+) - Image processing
+  - PDF page to image conversion
+  - Image optimization for LLM processing
+- **[tiktoken](https://github.com/openai/tiktoken)** (0.5+) - Token counting
+  - OpenAI model token estimation
+  - Context window management
+- **[tenacity](https://tenacity.readthedocs.io/)** (8.2+) - Retry logic
+  - Advanced retry strategies
+  - Exponential backoff implementation
+
 ## Email & Notifications
 - **Built-in `smtplib`** - Email sending
   - SMTP/TLS support
   - HTML emails
   - Attachment support
+  - Used for pipeline failure alerts
 
 ## Type Definitions
 - **[types-requests](https://github.com/python/typeshed)** - Type stubs

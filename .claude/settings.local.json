@@ -18,7 +18,9 @@
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(uv run pytest:*)"
+      "Bash(uv run pytest:*)",
+      "Bash(touch:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

@@ -1,23 +1,30 @@
 # FDD Pipeline
 
-Automated FDD (Franchise Disclosure Document) processing pipeline for extracting and analyzing franchise data.
+Automated FDD (Franchise Disclosure Document) processing pipeline for extracting and analyzing franchise data from state regulatory portals.
 
 ## Features
 
-- **Web Scraping**: Automated scraping of FDD documents from state regulatory websites
-- **Document Processing**: AI-powered extraction of structured data from FDD documents
-- **Data Validation**: Comprehensive validation of extracted franchise information
-- **Database Integration**: Supabase integration for data storage and management
-- **Workflow Orchestration**: Prefect-based pipeline orchestration
+- **Web Scraping**: Automated scraping of FDD documents from state regulatory websites (Minnesota CARDS, Wisconsin DFI)
+- **Document Processing**: MinerU Web API integration for PDF layout analysis and section detection
+- **AI Data Extraction**: Multi-model LLM framework for extracting structured data from FDD items (5, 6, 7, 19, 20, 21)
+- **Data Validation**: Comprehensive schema and business rule validation
+- **Database Integration**: Supabase PostgreSQL with full data lineage tracking
+- **Workflow Orchestration**: Prefect-based pipeline with retry logic and monitoring
+- **API Server**: FastAPI endpoints for programmatic access
+- **Google Drive Storage**: Automatic document organization and storage
 
 ## Technology Stack
 
 - **Python 3.11+**: Core language
-- **Prefect**: Workflow orchestration
-- **Instructor**: LLM-powered data extraction
-- **Playwright**: Web automation
-- **Supabase**: Database and storage
-- **Pydantic**: Data validation and modeling
+- **Prefect 2.14+**: Workflow orchestration and monitoring
+- **Instructor**: Structured LLM outputs with Pydantic integration
+- **Playwright**: Browser automation for web scraping and MinerU authentication
+- **MinerU Web API**: Advanced PDF processing and layout analysis
+- **Supabase**: PostgreSQL database with built-in auth and storage
+- **Pydantic 2.5+**: Data validation and modeling
+- **FastAPI**: REST API framework
+- **Google Gemini/OpenAI**: Primary LLM providers
+- **Ollama**: Local LLM support for cost optimization
 
 ## Installation
 
@@ -32,17 +39,74 @@ cd fdd_pipeline_new
 uv sync
 ```
 
-3. Configure environment variables (see configuration documentation)
+3. Install Playwright browsers:
+```bash
+playwright install chromium
+```
 
-## Usage
+4. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your API keys and settings
+```
 
-The pipeline consists of several main components:
+See [Configuration Reference](docs/CONFIGURATION_REFERENCE.md) for detailed setup.
 
-- **Web Scraping**: Extract FDD documents from regulatory websites
-- **Document Processing**: Parse and extract structured data from PDFs
-- **Data Storage**: Store processed data in Supabase database
+## Quick Start
 
-For detailed usage instructions, see the documentation in the `docs/` directory.
+### Command Line Interface
+
+```bash
+# Run complete pipeline for all states
+python main.py run-all
+
+# Scrape specific state
+python main.py scrape --state minnesota
+python main.py scrape --state wisconsin
+
+# Process a single PDF
+python main.py process-pdf --path /path/to/fdd.pdf
+
+# Health check
+python main.py health-check
+
+# Deploy to Prefect
+python main.py orchestrate --deploy --schedule
+```
+
+### API Server
+
+```bash
+# Start the API server
+python -m src.api.run
+
+# API will be available at http://localhost:8000
+# Documentation at http://localhost:8000/docs
+```
+
+## Project Structure
+
+```
+fdd_pipeline_new/
+├── flows/              # Prefect workflow definitions
+├── tasks/              # Core processing tasks
+├── models/             # Pydantic data models
+├── utils/              # Utility functions
+├── src/                # Additional source code
+│   ├── api/           # FastAPI endpoints
+│   └── MinerU/        # MinerU Web API integration
+├── docs/              # Documentation
+└── main.py            # CLI entry point
+```
+
+## Documentation
+
+- [Project Overview (CLAUDE.md)](CLAUDE.md) - Comprehensive project documentation
+- [Architecture](docs/ARCHITECTURE.md) - System design and components
+- [Database Schema](docs/database_schema.md) - PostgreSQL schema reference
+- [Technology Stack](docs/TECH_STACK.md) - Detailed dependency list
+- [MinerU Integration](docs/MINERU_INTEGRATION.md) - PDF processing setup
+- [API Reference](docs/API_REFERENCE.md) - REST API documentation
 
 ## Development
 
