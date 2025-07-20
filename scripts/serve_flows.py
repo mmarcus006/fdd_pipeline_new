@@ -34,47 +34,44 @@ logger = get_logger(__name__)
 @click.option("--port", type=int, default=4200, help="Port to serve on")
 async def serve_flows(state: str, port: int):
     """Serve state scraping flows locally."""
-    
+
     flows_to_serve = []
-    
+
     # Determine which states to serve
     if state in ["minnesota", "all"]:
         # Create Minnesota flow with parameters
         minnesota_flow = scrape_state_flow.with_options(
-            name="minnesota-scraper",
-            description="Scrape Minnesota CARDS portal"
+            name="minnesota-scraper", description="Scrape Minnesota CARDS portal"
         )
         flows_to_serve.append(minnesota_flow)
         logger.info("Added Minnesota scraper to serve list")
-    
+
     if state in ["wisconsin", "all"]:
         # Create Wisconsin flow with parameters
         wisconsin_flow = scrape_state_flow.with_options(
-            name="wisconsin-scraper",
-            description="Scrape Wisconsin DFI portal"
+            name="wisconsin-scraper", description="Scrape Wisconsin DFI portal"
         )
         flows_to_serve.append(wisconsin_flow)
         logger.info("Added Wisconsin scraper to serve list")
-    
+
     if not flows_to_serve:
         logger.error("No flows to serve")
         return
-    
+
     logger.info(f"Starting flow server on port {port}...")
     logger.info("You can run flows via the Prefect UI or using the CLI:")
-    
+
     if state in ["minnesota", "all"]:
-        logger.info("  Run Minnesota: prefect deployment run 'minnesota-scraper/minnesota-scraper'")
+        logger.info(
+            "  Run Minnesota: prefect deployment run 'minnesota-scraper/minnesota-scraper'"
+        )
     if state in ["wisconsin", "all"]:
-        logger.info("  Run Wisconsin: prefect deployment run 'wisconsin-scraper/wisconsin-scraper'")
-    
+        logger.info(
+            "  Run Wisconsin: prefect deployment run 'wisconsin-scraper/wisconsin-scraper'"
+        )
+
     # Serve the flows
-    await serve(
-        *flows_to_serve,
-        webserver=True,
-        port=port,
-        pause_on_shutdown=False
-    )
+    await serve(*flows_to_serve, webserver=True, port=port, pause_on_shutdown=False)
 
 
 if __name__ == "__main__":

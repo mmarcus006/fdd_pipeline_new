@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 FDD Pipeline Monitoring Script
 
@@ -8,8 +9,11 @@ import asyncio
 import json
 import os
 import sys
+import time
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from pathlib import Path
 
 import httpx
 from pydantic import BaseModel
@@ -101,27 +105,69 @@ class MonitoringService:
 
     async def collect_metrics(self) -> SystemMetrics:
         """Collect current system metrics."""
-        logger.info("Collecting system metrics")
+        start_time = time.time()
+        logger.info("Starting metrics collection")
+        logger.debug(f"Collection started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+        # Track timing for each component
+        component_times = {}
+        
         # Check API health
+        t = time.time()
         api_health = await self._check_api_health()
+        component_times['api_health'] = time.time() - t
+        logger.debug(f"API health check: {api_health} ({component_times['api_health']:.3f}s)")
 
         # Check database health
+        t = time.time()
         database_health = self._check_database_health()
+        component_times['database_health'] = time.time() - t
+        logger.debug(f"Database health check: {database_health} ({component_times['database_health']:.3f}s)")
 
         # Check Prefect health
+        t = time.time()
         prefect_health = await self._check_prefect_health()
+        component_times['prefect_health'] = time.time() - t
+        logger.debug(f"Prefect health check: {prefect_health} ({component_times['prefect_health']:.3f}s)")
 
         # Check Google Drive health
+        t = time.time()
         gdrive_health = self._check_gdrive_health()
+        component_times['gdrive_health'] = time.time() - t
+        logger.debug(f"Google Drive health check: {gdrive_health} ({component_times['gdrive_health']:.3f}s)")
 
         # Get operational metrics
+        logger.debug("Collecting operational metrics...")
+        
+        t = time.time()
         active_flows = await self._get_active_flows()
+        component_times['active_flows'] = time.time() - t
+        logger.debug(f"Active flows: {active_flows} ({component_times['active_flows']:.3f}s)")
+        
+        t = time.time()
         pending_documents = self._get_pending_documents()
+        component_times['pending_documents'] = time.time() - t
+        logger.debug(f"Pending documents: {pending_documents} ({component_times['pending_documents']:.3f}s)")
+        
+        t = time.time()
         failed_extractions = self._get_failed_extractions()
+        component_times['failed_extractions'] = time.time() - t
+        logger.debug(f"Failed extractions (24h): {failed_extractions} ({component_times['failed_extractions']:.3f}s)")
+        
+        t = time.time()
         processing_rate = self._calculate_processing_rate()
+        component_times['processing_rate'] = time.time() - t
+        logger.debug(f"Processing rate: {processing_rate:.2f} docs/hr ({component_times['processing_rate']:.3f}s)")
+        
+        t = time.time()
         error_rate = self._calculate_error_rate()
+        component_times['error_rate'] = time.time() - t
+        logger.debug(f"Error rate: {error_rate:.2f}% ({component_times['error_rate']:.3f}s)")
+        
+        t = time.time()
         storage_used_gb = self._get_storage_usage()
+        component_times['storage'] = time.time() - t
+        logger.debug(f"Storage used: {storage_used_gb:.2f} GB ({component_times['storage']:.3f}s)")
 
         metrics = SystemMetrics(
             timestamp=datetime.utcnow(),
@@ -139,8 +185,15 @@ class MonitoringService:
 
         # Store in history
         self.metrics_history.append(metrics)
-        if len(self.metrics_history) > 1440:  # Keep 24 hours at 1-minute intervals
+        history_size = len(self.metrics_history)
+        if history_size > 1440:  # Keep 24 hours at 1-minute intervals
             self.metrics_history.pop(0)
+            logger.debug("Pruned oldest metric from history (maintaining 24h window)")
+        
+        total_time = time.time() - start_time
+        logger.info(f"Metrics collection completed in {total_time:.3f}s")
+        logger.debug(f"Metrics history size: {history_size}")
+        logger.debug(f"Slowest component: {max(component_times.items(), key=lambda x: x[1])}")
 
         return metrics
 
@@ -310,14 +363,17 @@ class MonitoringService:
     def check_alerts(self, metrics: SystemMetrics) -> List[str]:
         """Check if any alerts should be triggered."""
         alerts = []
+        logger.debug(f"Checking {len(self.alert_rules)} alert rules")
 
         for rule in self.alert_rules:
             value = getattr(metrics, rule.metric)
-
+            original_value = value
+            
             # Handle string metrics
             if isinstance(value, str):
                 if rule.metric.endswith("_health"):
                     value = 0 if value != "healthy" else 1
+                    logger.debug(f"Converted {rule.metric} from '{original_value}' to {value}")
 
             # Check threshold
             triggered = False
@@ -327,12 +383,15 @@ class MonitoringService:
                 triggered = True
             elif rule.comparison == "eq" and value == rule.threshold:
                 triggered = True
+            
+            logger.debug(f"Rule '{rule.name}': {rule.metric}={value} {rule.comparison} {rule.threshold} => {'TRIGGERED' if triggered else 'OK'}")
 
             if triggered:
-                alert_msg = f"[{rule.name}] {rule.message} (current: {value})"
+                alert_msg = f"[{rule.name}] {rule.message} (current: {original_value})"
                 alerts.append(alert_msg)
-                logger.warning(alert_msg)
-
+                logger.warning(f"Alert triggered: {alert_msg}")
+        
+        logger.debug(f"Total alerts triggered: {len(alerts)}")
         return alerts
 
     def send_alerts(self, alerts: List[str]):
@@ -393,64 +452,261 @@ class MonitoringService:
     async def run_monitoring_loop(self, interval_seconds: int = 60):
         """Run continuous monitoring loop."""
         logger.info(f"Starting monitoring loop with {interval_seconds}s interval")
+        logger.debug(f"Alert rules loaded: {len(self.alert_rules)} rules")
+        logger.debug(f"Monitoring started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        iteration = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 5
 
         while True:
+            iteration += 1
+            loop_start = time.time()
+            
             try:
+                logger.debug(f"\n--- Monitoring iteration {iteration} ---")
+                
                 # Collect metrics
+                logger.debug("Collecting metrics...")
                 metrics = await self.collect_metrics()
-
+                
                 # Check alerts
+                logger.debug("Checking alert conditions...")
                 alerts = self.check_alerts(metrics)
-
-                # Send alerts if any
+                
                 if alerts:
+                    logger.warning(f"Found {len(alerts)} alert(s)")
                     self.send_alerts(alerts)
+                else:
+                    logger.debug("No alerts triggered")
 
-                # Log current status
+                # Generate and log report
                 report = self.generate_report()
-                logger.info(f"System status: {json.dumps(report, indent=2)}")
-
-                # Wait for next interval
-                await asyncio.sleep(interval_seconds)
+                
+                # Log summary
+                logger.info(f"Monitoring iteration {iteration} complete")
+                logger.info(f"System health: API={metrics.api_health}, DB={metrics.database_health}, Prefect={metrics.prefect_health}")
+                logger.info(f"Operations: {metrics.active_flows} active flows, {metrics.pending_documents} pending docs")
+                logger.info(f"Performance: {metrics.processing_rate:.1f} docs/hr, {metrics.error_rate:.1f}% errors")
+                
+                # Reset error counter on success
+                consecutive_errors = 0
+                
+                # Calculate sleep time to maintain interval
+                loop_time = time.time() - loop_start
+                sleep_time = max(0, interval_seconds - loop_time)
+                
+                if sleep_time < interval_seconds * 0.9:  # Loop took >10% of interval
+                    logger.warning(f"Monitoring loop took {loop_time:.1f}s, may need to increase interval")
+                
+                logger.debug(f"Sleeping for {sleep_time:.1f}s until next iteration")
+                await asyncio.sleep(sleep_time)
 
             except KeyboardInterrupt:
                 logger.info("Monitoring stopped by user")
+                logger.debug(f"Stopped after {iteration} iterations")
                 break
+                
             except Exception as e:
-                logger.error(f"Monitoring loop error: {e}")
-                await asyncio.sleep(interval_seconds)
+                consecutive_errors += 1
+                logger.error(f"Monitoring loop error (attempt {consecutive_errors}): {e}")
+                logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.critical(f"Too many consecutive errors ({consecutive_errors}), stopping monitoring")
+                    break
+                
+                # Exponential backoff on errors
+                error_sleep = min(interval_seconds * (2 ** (consecutive_errors - 1)), 300)  # Max 5 min
+                logger.debug(f"Waiting {error_sleep}s before retry due to error")
+                await asyncio.sleep(error_sleep)
+        
+        logger.info("Monitoring loop terminated")
 
 
 async def main():
     """Main entry point for monitoring script."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="FDD Pipeline Monitoring")
+    parser = argparse.ArgumentParser(
+        description="FDD Pipeline Monitoring Service",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run continuous monitoring (default 60s interval)
+  %(prog)s
+  
+  # Run with custom interval
+  %(prog)s --interval 30
+  
+  # Run once and exit
+  %(prog)s --once
+  
+  # Output as JSON
+  %(prog)s --once --json
+  
+  # Save output to file
+  %(prog)s --once --output report.json
+  
+  # Enable debug logging
+  %(prog)s --debug
+  
+  # Export metrics history
+  %(prog)s --export-metrics metrics_history.json
+        """
+    )
+    
     parser.add_argument(
-        "--interval",
+        "--interval", "-i",
         type=int,
         default=60,
-        help="Monitoring interval in seconds (default: 60)",
+        help="Monitoring interval in seconds (default: 60)"
     )
     parser.add_argument("--once", action="store_true", help="Run once and exit")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--output", "-o", help="Save output to file")
+    parser.add_argument("--debug", "-d", action="store_true", help="Enable debug logging")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
+    parser.add_argument("--export-metrics", help="Export metrics history to file")
+    parser.add_argument(
+        "--alert-test", 
+        action="store_true", 
+        help="Test alert system with dummy alerts"
+    )
 
     args = parser.parse_args()
+    
+    # Set up logging
+    if args.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(f'monitoring_debug_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            ]
+        )
+        logger.debug("Debug logging enabled")
+    elif args.verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    logger.debug(f"Script started with arguments: {vars(args)}")
+    logger.debug(f"Current working directory: {os.getcwd()}")
+    logger.debug(f"Python version: {sys.version}")
+    
+    try:
+        logger.info("Initializing monitoring service...")
+        monitor = MonitoringService()
+        logger.debug(f"Monitoring service initialized with {len(monitor.alert_rules)} alert rules")
+        
+        if args.alert_test:
+            # Test alert system
+            logger.info("Testing alert system...")
+            test_alerts = [
+                "[TEST] API service is not responding",
+                "[TEST] Error rate exceeds 5%",
+                "[TEST] Database connection failed"
+            ]
+            monitor.send_alerts(test_alerts)
+            print("Alert test completed - check logs for output")
+            return
+        
+        if args.export_metrics:
+            # Export metrics history
+            if monitor.metrics_history:
+                export_data = {
+                    "exported_at": datetime.now().isoformat(),
+                    "metrics_count": len(monitor.metrics_history),
+                    "metrics": [m.dict() for m in monitor.metrics_history]
+                }
+                with open(args.export_metrics, 'w') as f:
+                    json.dump(export_data, f, indent=2, default=str)
+                logger.info(f"Exported {len(monitor.metrics_history)} metrics to {args.export_metrics}")
+                print(f"✓ Exported {len(monitor.metrics_history)} metrics to {args.export_metrics}")
+            else:
+                logger.warning("No metrics history to export")
+                print("No metrics history to export")
+            return
 
-    monitor = MonitoringService()
+        if args.once:
+            # Run once mode
+            logger.info("Running single metrics collection...")
+            start_time = time.time()
+            
+            metrics = await monitor.collect_metrics()
+            alerts = monitor.check_alerts(metrics)
 
-    if args.once:
-        # Run once
-        metrics = await monitor.collect_metrics()
-        alerts = monitor.check_alerts(metrics)
+            if alerts:
+                logger.warning(f"{len(alerts)} alerts triggered")
+                monitor.send_alerts(alerts)
+                
+                if not args.json:
+                    print("\n⚠️  ALERTS:")
+                    for alert in alerts:
+                        print(f"  - {alert}")
 
-        if alerts:
-            monitor.send_alerts(alerts)
-
-        report = monitor.generate_report()
-        print(json.dumps(report, indent=2))
-    else:
-        # Run continuous loop
-        await monitor.run_monitoring_loop(args.interval)
+            report = monitor.generate_report()
+            
+            # Add alerts to report
+            report['alerts'] = alerts
+            
+            elapsed = time.time() - start_time
+            report['collection_time_seconds'] = round(elapsed, 3)
+            
+            if args.json or args.output:
+                output = json.dumps(report, indent=2)
+                if args.output:
+                    with open(args.output, 'w') as f:
+                        f.write(output)
+                    logger.info(f"Report saved to: {args.output}")
+                    if not args.json:
+                        print(f"\n✓ Report saved to: {args.output}")
+                if args.json and not args.output:
+                    print(output)
+            else:
+                # Pretty print report
+                print("\nFDD Pipeline Monitoring Report")
+                print("=" * 50)
+                print(f"Timestamp: {report['timestamp']}")
+                print(f"Collection Time: {elapsed:.3f}s")
+                
+                print("\nSystem Status:")
+                for component, status in report['system_status'].items():
+                    symbol = "✓" if status == "healthy" else "✗"
+                    print(f"  {symbol} {component}: {status}")
+                
+                print("\nOperational Metrics:")
+                for metric, value in report['operational_metrics'].items():
+                    print(f"  - {metric}: {value}")
+                
+                print("\nPerformance Metrics:")
+                for metric, value in report['performance_metrics'].items():
+                    print(f"  - {metric}: {value:.2f}")
+                
+                if alerts:
+                    print(f"\n⚠️  {len(alerts)} Alert(s) Active")
+        else:
+            # Continuous monitoring mode
+            logger.info("Starting continuous monitoring mode")
+            print(f"Starting continuous monitoring (interval: {args.interval}s)")
+            print("Press Ctrl+C to stop\n")
+            
+            await monitor.run_monitoring_loop(args.interval)
+            
+    except KeyboardInterrupt:
+        logger.info("Monitoring interrupted by user")
+        print("\nMonitoring stopped by user")
+        sys.exit(130)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+        import traceback
+        logger.debug(f"Traceback:\n{traceback.format_exc()}")
+        print(f"\n✗ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

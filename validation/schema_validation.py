@@ -15,20 +15,17 @@ from pydantic import BaseModel, ValidationError, Field
 import asyncio
 from contextlib import asynccontextmanager
 
-from models import (
-    InitialFee,
-    OtherFee,
-    InitialInvestment,
-    FPR,
-    OutletSummary,
-    StateCount,
-    Financials,
-    FDD,
-    FDDSection,
-    Franchisor,
-    ValidationConfig,
-)
-from utils.database import DatabaseManager
+from models.base import ValidationConfig
+from models.item5_fees import Item5FeesResponse, Item5Fee
+from models.item6_other_fees import Item6OtherFeesResponse, Item6OtherFee
+from models.item7_investment import Item7InvestmentResponse, Item7Investment
+from models.item19_fpr import Item19FPRResponse, Item19FPR
+from models.item20_outlets import Item20OutletsResponse, OutletSummary, StateCount
+from models.item21_financials import Item21FinancialsResponse, Financials
+from models.fdd import FDD
+from models.section import FDDSection
+from models.franchisor import Franchisor
+from storage.database.manager import DatabaseManager
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -340,7 +337,7 @@ class SchemaValidator:
 
         return errors
 
-    async def _validate_initial_fee(self, fee: InitialFee) -> List[ValidationError]:
+    async def _validate_initial_fee(self, fee: Item5Fee) -> List[ValidationError]:
         """Custom validation for Initial Fee (Item 5)."""
         errors = []
 
@@ -384,7 +381,7 @@ class SchemaValidator:
 
         return errors
 
-    async def _validate_other_fee(self, fee: OtherFee) -> List[ValidationError]:
+    async def _validate_other_fee(self, fee: Item6OtherFee) -> List[ValidationError]:
         """Custom validation for Other Fee (Item 6)."""
         errors = []
 
@@ -424,7 +421,7 @@ class SchemaValidator:
         return errors
 
     async def _validate_initial_investment(
-        self, investment: InitialInvestment
+        self, investment: Item7Investment
     ) -> List[ValidationError]:
         """Custom validation for Initial Investment (Item 7)."""
         errors = []
@@ -464,7 +461,7 @@ class SchemaValidator:
 
         return errors
 
-    async def _validate_fpr(self, fpr: FPR) -> List[ValidationError]:
+    async def _validate_fpr(self, fpr: Item19FPR) -> List[ValidationError]:
         """Custom validation for Financial Performance Representation (Item 19)."""
         errors = []
 

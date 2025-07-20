@@ -487,3 +487,151 @@ async def extract_sections_from_mineru(
     except Exception as e:
         logger.error("Failed to extract sections from MinerU", error=str(e))
         raise
+
+
+if __name__ == "__main__":
+    """Demonstrate MinerU processing functionality."""
+    import sys
+    
+    # Configure logging for demo
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    async def demo_mineru():
+        """Run MinerU processing demos."""
+        print("\n" + "="*60)
+        print("MinerU Processing Module Demo")
+        print("="*60 + "\n")
+        
+        # Demo 1: Initialize Processor
+        print("1. Initializing MinerU Processor...")
+        processor = MinerUProcessor()
+        print(f"   ✓ Processor initialized")
+        print(f"   Login URL: {processor.login_url}")
+        print(f"   Auth file: {processor.auth_file}")
+        
+        # Demo 2: Check Authentication
+        print("\n2. Authentication Status:")
+        if processor.auth_file.exists():
+            print(f"   ✓ Auth file exists: {processor.auth_file}")
+            
+            # Try to load saved auth
+            try:
+                with open(processor.auth_file, "r") as f:
+                    auth_data = json.load(f)
+                    has_token = any(c.get("name") == "uaa-token" for c in auth_data.get("cookies", []))
+                    print(f"   Auth token present: {has_token}")
+            except Exception as e:
+                print(f"   ✗ Error reading auth file: {e}")
+        else:
+            print("   ✗ No saved authentication found")
+            print("   Run processor.login() to authenticate")
+        
+        # Demo 3: Mock PDF Processing (without actual API calls)
+        print("\n3. Mock PDF Processing Flow:")
+        
+        test_pdf_url = "https://example.com/test_fdd.pdf"
+        test_fdd_uuid = UUID("12345678-1234-5678-1234-567812345678")
+        test_franchise = "Test Franchise LLC"
+        
+        print(f"   PDF URL: {test_pdf_url}")
+        print(f"   FDD UUID: {test_fdd_uuid}")
+        print(f"   Franchise: {test_franchise}")
+        
+        print("\n   Processing steps:")
+        print("   1. Submit PDF to MinerU API")
+        print("   2. Poll for completion (check status every 10s)")
+        print("   3. Download results (markdown and JSON)")
+        print("   4. Upload to Google Drive")
+        print("   5. Return processing results")
+        
+        # Demo 4: API Endpoints
+        print("\n4. MinerU API Endpoints:")
+        print(f"   Submit: {processor.api_submit}")
+        print(f"   Tasks: {processor.api_tasks}")
+        print(f"   Detail: {processor.api_detail.replace('{task_id}', '<task_id>')}")
+        
+        # Demo 5: Error Scenarios
+        print("\n5. Common Error Scenarios:")
+        error_scenarios = [
+            ("No authentication", "Call processor.login() first"),
+            ("Auth expired", "Saved auth token no longer valid"),
+            ("Processing timeout", "PDF takes > 300s to process"),
+            ("API error", "MinerU service returns error status"),
+            ("Network error", "Connection issues during download"),
+            ("Drive upload error", "Google Drive quota exceeded")
+        ]
+        
+        for error, solution in error_scenarios:
+            print(f"   • {error}: {solution}")
+        
+        # Demo 6: Live Test (Optional)
+        print("\n6. Live API Test:")
+        
+        if len(sys.argv) > 1 and sys.argv[1] == "--live":
+            print("   Running live test...")
+            
+            # Check if authenticated
+            if not processor.auth_token:
+                print("   Attempting login...")
+                try:
+                    success = processor.login(use_saved=True)
+                    if success:
+                        print("   ✓ Login successful!")
+                    else:
+                        print("   ✗ Login failed")
+                        return
+                except Exception as e:
+                    print(f"   ✗ Login error: {e}")
+                    return
+            
+            # Test with a real PDF URL if provided
+            if len(sys.argv) > 2:
+                test_url = sys.argv[2]
+                print(f"\n   Processing PDF: {test_url}")
+                
+                try:
+                    results = await processor.process_pdf_with_storage(
+                        pdf_url=test_url,
+                        fdd_uuid=test_fdd_uuid,
+                        franchise_name=test_franchise,
+                        wait_time=300
+                    )
+                    
+                    print("\n   ✓ Processing completed!")
+                    print(f"   Task ID: {results['task_id']}")
+                    print(f"   Files stored: {len(results['drive_files'])}")
+                    
+                    for file_type, file_info in results['drive_files'].items():
+                        print(f"   - {file_type}: {file_info['file_id']} ({file_info['size']:,} bytes)")
+                    
+                except Exception as e:
+                    print(f"\n   ✗ Processing failed: {e}")
+            else:
+                print("   Provide a PDF URL as second argument for live test")
+        else:
+            print("   Run with --live flag to test API")
+            print("   Example: python mineru_processing.py --live https://example.com/fdd.pdf")
+        
+        # Demo 7: Prefect Task Usage
+        print("\n7. Prefect Task Usage:")
+        print("   ```python")
+        print("   from processing.mineru.mineru_processing import process_document_with_mineru")
+        print("   ")
+        print("   # In your Prefect flow:")
+        print("   results = await process_document_with_mineru(")
+        print("       pdf_url='https://example.com/fdd.pdf',")
+        print("       fdd_id=fdd_uuid,")
+        print("       franchise_name='Example Franchise',")
+        print("       timeout_seconds=300")
+        print("   )")
+        print("   ```")
+        
+        print("\n" + "="*60)
+        print("Demo completed!")
+        print("="*60 + "\n")
+    
+    # Run the demo
+    asyncio.run(demo_mineru())

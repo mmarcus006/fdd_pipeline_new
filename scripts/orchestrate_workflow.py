@@ -14,6 +14,9 @@ Usage:
 import asyncio
 import json
 import sys
+import os
+import time
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -37,6 +40,8 @@ class WorkflowOrchestrator:
     """Orchestrates the complete FDD processing workflow."""
 
     def __init__(self, checkpoint_file: Optional[Path] = None):
+        logger.debug("Initializing WorkflowOrchestrator")
+        
         self.db = get_database_manager()
         self.checkpoint_file = checkpoint_file or Path("workflow_checkpoint.json")
         self.workflow_id = str(uuid4())
@@ -48,9 +53,15 @@ class WorkflowOrchestrator:
             "failed": 0,
             "skipped": 0,
         }
+        
+        logger.debug(f"Workflow ID: {self.workflow_id}")
+        logger.debug(f"Checkpoint file: {self.checkpoint_file}")
+        logger.info(f"WorkflowOrchestrator initialized with ID: {self.workflow_id}")
 
     async def save_checkpoint(self, stage: str, data: Dict[str, Any]):
         """Save workflow checkpoint for recovery."""
+        logger.debug(f"Saving checkpoint for stage: {stage}")
+        
         checkpoint = {
             "workflow_id": self.workflow_id,
             "timestamp": datetime.utcnow().isoformat(),
@@ -58,11 +69,20 @@ class WorkflowOrchestrator:
             "stats": self.stats,
             "data": data,
         }
+        
+        # Backup existing checkpoint if it exists
+        if self.checkpoint_file.exists():
+            backup_path = self.checkpoint_file.with_suffix(f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+            logger.debug(f"Backing up existing checkpoint to: {backup_path}")
+            import shutil
+            shutil.copy2(self.checkpoint_file, backup_path)
 
         with open(self.checkpoint_file, "w") as f:
             json.dump(checkpoint, f, indent=2, default=str)
-
-        logger.info(f"Checkpoint saved: {stage}")
+        
+        file_size = self.checkpoint_file.stat().st_size
+        logger.info(f"Checkpoint saved: {stage} ({file_size} bytes)")
+        logger.debug(f"Checkpoint stats: {self.stats}")
 
     async def load_checkpoint(self) -> Optional[Dict[str, Any]]:
         """Load checkpoint if exists."""
@@ -76,11 +96,16 @@ class WorkflowOrchestrator:
     ) -> Dict[str, List[str]]:
         """Run web scrapers for specified states."""
         logger.info(f"Starting scrapers for states: {states}")
+        logger.debug(f"Scraper limit: {limit}")
+        
+        scraping_start = time.time()
         await self.save_checkpoint("scraping_started", {"states": states})
 
         results = {}
 
-        for state in states:
+        for i, state in enumerate(states, 1):
+            logger.debug(f"Processing state {i}/{len(states)}: {state}")
+            state_start = time.time()
             try:
                 if state == "minnesota":
                     logger.info("Running Minnesota scraper...")
@@ -135,22 +160,38 @@ class WorkflowOrchestrator:
                     self.stats["scraped"] += len(recent_fdds)
 
             except Exception as e:
-                logger.error(f"Scraper failed for {state}: {e}")
+                state_time = time.time() - state_start
+                logger.error(f"Scraper failed for {state} after {state_time:.2f}s: {e}")
+                logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+                import traceback
+                logger.debug(f"Traceback:\n{traceback.format_exc()}")
                 self.stats["failed"] += 1
                 results[state] = []
+            
+            state_time = time.time() - state_start
+            logger.debug(f"State {state} completed in {state_time:.2f}s")
 
+        scraping_time = time.time() - scraping_start
+        logger.info(f"Scraping completed in {scraping_time:.2f}s")
+        logger.info(f"Total documents scraped: {self.stats['scraped']}")
+        
         await self.save_checkpoint("scraping_completed", results)
         return results
 
     async def process_documents(self, fdd_ids: List[str]) -> Dict[str, str]:
         """Process FDD documents through the pipeline."""
         logger.info(f"Processing {len(fdd_ids)} documents")
+        logger.debug(f"FDD IDs to process: {fdd_ids[:5]}...")  # Show first 5
+        
+        processing_start = time.time()
         await self.save_checkpoint("processing_started", {"fdd_ids": fdd_ids})
 
         results = {}
         loop = asyncio.get_running_loop()
 
-        for fdd_id in fdd_ids:
+        for i, fdd_id in enumerate(fdd_ids, 1):
+            doc_start = time.time()
+            logger.debug(f"Processing document {i}/{len(fdd_ids)}: {fdd_id}")
             try:
                 # Get FDD record
                 fdd = await loop.run_in_executor(
@@ -330,6 +371,8 @@ Failed FDDs: {db_stats['failed_fdds']}
 @click.option("--resume-from", type=str, help="Resume from checkpoint file")
 @click.option("--skip-scraping", is_flag=True, help="Skip scraping, process existing")
 @click.option("--parallel", is_flag=True, help="Run tasks in parallel")
+@click.option("--debug", "-d", is_flag=True, help="Enable debug logging")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 async def orchestrate(
     state: str,
     mode: str,
@@ -337,16 +380,40 @@ async def orchestrate(
     resume_from: Optional[str],
     skip_scraping: bool,
     parallel: bool,
+    debug: bool,
+    verbose: bool,
 ):
-    """Orchestrate the complete FDD processing workflow."""
+    """Orchestrate the complete FDD processing workflow.
+    
+    Examples:
+        # Run complete workflow for all states
+        python orchestrate_workflow.py --state all --mode production
+        
+        # Test run with limited documents
+        python orchestrate_workflow.py --state minnesota --mode test --limit 5
+        
+        # Resume from checkpoint
+        python orchestrate_workflow.py --resume-from workflow_checkpoint.json
+        
+        # Process existing documents only
+        python orchestrate_workflow.py --skip-scraping --limit 10
+        
+        # Run with debug logging
+        python orchestrate_workflow.py --debug
+    """
 
+    # Set up logging based on arguments (already done in main())
+    overall_start = time.time()
+    
     # Set limit based on mode
     if mode == "test" and not limit:
         limit = 5
+        logger.debug("Test mode: setting default limit to 5")
 
     logger.info(
         f"Starting workflow orchestration: state={state}, mode={mode}, limit={limit}"
     )
+    logger.debug(f"Skip scraping: {skip_scraping}, Parallel: {parallel}")
 
     # Initialize orchestrator
     checkpoint_file = Path(resume_from) if resume_from else None
@@ -430,6 +497,7 @@ async def orchestrate(
                 await orchestrator.process_documents(all_fdd_ids)
 
         # Stage 3: Generate Report
+        logger.info("Generating workflow report...")
         report = await orchestrator.generate_report()
         print(report)
 
@@ -437,14 +505,68 @@ async def orchestrate(
         report_file = Path(f"workflow_report_{orchestrator.workflow_id}.txt")
         with open(report_file, "w") as f:
             f.write(report)
-
-        logger.info(f"Workflow completed. Report saved to {report_file}")
+        
+        overall_time = time.time() - overall_start
+        logger.info(f"Workflow completed in {overall_time:.2f}s")
+        logger.info(f"Report saved to: {report_file}")
+        logger.debug(f"Final stats: {orchestrator.stats}")
+        
+        print(f"\n✓ Workflow completed successfully in {overall_time:.2f}s")
+        print(f"Report saved to: {report_file}")
 
     except Exception as e:
-        logger.error(f"Workflow failed: {e}", exc_info=True)
+        overall_time = time.time() - overall_start
+        logger.error(f"Workflow failed after {overall_time:.2f}s: {e}", exc_info=True)
         await orchestrator.save_checkpoint("error", {"error": str(e)})
+        print(f"\n✗ Workflow failed: {e}")
         raise
 
 
+def main():
+    """Main entry point with proper asyncio handling."""
+    # Set up logging before running async code
+    args = sys.argv[1:]
+    
+    # Check for debug/verbose flags
+    if "--debug" in args or "-d" in args:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(f'orchestrate_workflow_debug_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            ]
+        )
+        logger.debug("Debug logging enabled")
+    elif "--verbose" in args or "-v" in args:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    logger.debug(f"Script started with arguments: {args}")
+    logger.debug(f"Current working directory: {os.getcwd()}")
+    logger.debug(f"Python version: {sys.version}")
+    
+    try:
+        # Run the async command
+        asyncio.run(orchestrate.main(standalone_mode=False))
+    except KeyboardInterrupt:
+        logger.info("Workflow interrupted by user")
+        print("\nWorkflow cancelled by user")
+        sys.exit(130)
+    except click.ClickException as e:
+        # Let Click handle its own exceptions
+        e.show()
+        sys.exit(e.exit_code)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+        import traceback
+        logger.debug(f"Traceback:\n{traceback.format_exc()}")
+        print(f"\n❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    orchestrate()
+    main()

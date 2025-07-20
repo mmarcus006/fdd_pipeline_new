@@ -343,6 +343,22 @@ class MultimodalProcessor:
                     page_range=(start_page + 1, end_page),  # 1-indexed for display
                 )
                 processed.chunks.append(chunk)
+                
+                logger.debug(
+                    f"Created chunk {chunk_idx + 1}/{total_chunks} - "
+                    f"Pages {start_page + 1}-{end_page}, "
+                    f"Text length: {len(chunk.content)} chars"
+                )
+        
+        logger.info(
+            f"PDF chunking completed - Total chunks: {len(processed.chunks)}"
+        )
+        pipeline_logger.info(
+            "PDF chunks created",
+            total_chunks=len(processed.chunks),
+            pages_per_chunk=pages_per_chunk,
+            total_pages=processed.page_count
+        )
 
     async def process_url(
         self, url: str, extract_text: bool = True, chunk_size: Optional[int] = None

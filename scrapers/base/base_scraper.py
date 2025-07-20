@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, AsyncIterator, Tuple
 from uuid import UUID, uuid4
+from functools import wraps
+from datetime import datetime
 
 import httpx
 from playwright.async_api import (
@@ -23,7 +25,7 @@ from pydantic import BaseModel
 from config import get_settings
 from models.scrape_metadata import ScrapeMetadata
 from utils.logging import PipelineLogger
-from scrapers.utils.scraping_utils import (
+from utils.scraping_utils import (
     sanitize_filename,
     get_default_headers,
     parse_date_formats,
@@ -43,6 +45,74 @@ from scrapers.base.exceptions import (
     RetryableError,
     get_retry_delay,
 )
+
+
+def log_execution_time(func):
+    """Decorator to log function execution time."""
+    @wraps(func)
+    async def async_wrapper(*args, **kwargs):
+        start_time = time.time()
+        instance = args[0] if args and hasattr(args[0], 'logger') else None
+        func_name = func.__name__
+        
+        if instance and hasattr(instance, 'logger'):
+            instance.logger.debug(f"entering_{func_name}", 
+                                args=str(args[1:])[:200], 
+                                kwargs=str(kwargs)[:200])
+        
+        try:
+            result = await func(*args, **kwargs)
+            execution_time = time.time() - start_time
+            
+            if instance and hasattr(instance, 'logger'):
+                instance.logger.debug(f"exiting_{func_name}", 
+                                    execution_time=f"{execution_time:.3f}s",
+                                    result_type=type(result).__name__)
+            
+            return result
+        except Exception as e:
+            execution_time = time.time() - start_time
+            if instance and hasattr(instance, 'logger'):
+                instance.logger.error(f"{func_name}_failed", 
+                                    execution_time=f"{execution_time:.3f}s",
+                                    error=str(e),
+                                    error_type=type(e).__name__)
+            raise
+    
+    @wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        start_time = time.time()
+        instance = args[0] if args and hasattr(args[0], 'logger') else None
+        func_name = func.__name__
+        
+        if instance and hasattr(instance, 'logger'):
+            instance.logger.debug(f"entering_{func_name}", 
+                                args=str(args[1:])[:200], 
+                                kwargs=str(kwargs)[:200])
+        
+        try:
+            result = func(*args, **kwargs)
+            execution_time = time.time() - start_time
+            
+            if instance and hasattr(instance, 'logger'):
+                instance.logger.debug(f"exiting_{func_name}", 
+                                    execution_time=f"{execution_time:.3f}s",
+                                    result_type=type(result).__name__)
+            
+            return result
+        except Exception as e:
+            execution_time = time.time() - start_time
+            if instance and hasattr(instance, 'logger'):
+                instance.logger.error(f"{func_name}_failed", 
+                                    execution_time=f"{execution_time:.3f}s",
+                                    error=str(e),
+                                    error_type=type(e).__name__)
+            raise
+    
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    else:
+        return sync_wrapper
 
 
 class DocumentMetadata(BaseModel):
@@ -101,6 +171,17 @@ class BaseScraper(ABC):
             f"scraper.{source_name.lower()}",
             prefect_run_id=self.correlation_id,
         )
+        
+        # Log initialization parameters
+        self.logger.debug(
+            "base_scraper_init",
+            source_name=source_name,
+            headless=headless,
+            timeout=timeout,
+            correlation_id=self.correlation_id,
+            retry_attempts=self.settings.retry_attempts,
+            settings=str(self.settings.dict())[:200]
+        )
 
         # Browser management
         self.playwright: Optional[Playwright] = None
@@ -114,6 +195,17 @@ class BaseScraper(ABC):
         # Retry configuration
         self.max_retries = self.settings.retry_attempts
         self.base_delay = 1.0  # Base delay for exponential backoff
+        
+        self.logger.debug(
+            "base_scraper_initialized",
+            playwright=self.playwright,
+            browser=self.browser,
+            context=self.context,
+            page=self.page,
+            http_client=self.http_client,
+            max_retries=self.max_retries,
+            base_delay=self.base_delay
+        )
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -124,6 +216,7 @@ class BaseScraper(ABC):
         """Async context manager exit."""
         await self.cleanup()
 
+    @log_execution_time
     async def initialize(self) -> None:
         """Initialize browser and HTTP client."""
         try:
@@ -133,20 +226,23 @@ class BaseScraper(ABC):
             self.playwright = await async_playwright().start()
 
             # Launch browser with optimized settings
+            browser_args = [
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-extensions",
+                "--no-first-run",
+                "--disable-default-apps",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+            ]
+            self.logger.debug("launching_browser", headless=self.headless, args=browser_args)
             self.browser = await self.playwright.chromium.launch(
                 headless=self.headless,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-extensions",
-                    "--no-first-run",
-                    "--disable-default-apps",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows",
-                    "--disable-renderer-backgrounding",
-                ],
+                args=browser_args,
             )
+            self.logger.debug("browser_launched", browser_type="chromium")
 
             # Create browser context with random user agent
             user_agent = random.choice(self.USER_AGENTS)
@@ -190,6 +286,7 @@ class BaseScraper(ABC):
                 },
             )
 
+    @log_execution_time
     async def cleanup(self) -> None:
         """Clean up browser and HTTP client resources."""
         try:
@@ -291,6 +388,7 @@ class BaseScraper(ABC):
             },
         )
 
+    @log_execution_time
     async def safe_navigate(self, url: str, wait_for: Optional[str] = None) -> None:
         """Safely navigate to a URL with error handling.
 
@@ -439,6 +537,7 @@ class BaseScraper(ABC):
                     context={"selector": selector, "error_type": type(e).__name__},
                 )
 
+    @log_execution_time
     async def download_document(
         self, url: str, expected_size: Optional[int] = None
     ) -> bytes:
@@ -541,6 +640,7 @@ class BaseScraper(ABC):
 
         return await self.retry_with_backoff(_download, "document_download")
 
+    @log_execution_time
     def compute_document_hash(self, content: bytes) -> str:
         """Compute SHA256 hash of document content.
 
@@ -550,7 +650,11 @@ class BaseScraper(ABC):
         Returns:
             SHA256 hash as hex string
         """
-        return hashlib.sha256(content).hexdigest()
+        hash_value = hashlib.sha256(content).hexdigest()
+        self.logger.debug("document_hash_computed", 
+                         content_size=len(content), 
+                         hash_value=hash_value[:16] + "...")
+        return hash_value
 
     async def download_file_streaming(
         self,
@@ -965,3 +1069,208 @@ async def create_scraper(scraper_class, *args, **kwargs):
         )
     finally:
         await scraper.cleanup()
+
+
+# Demo scraper implementation for testing
+class DemoScraper(BaseScraper):
+    """Demo scraper implementation for testing base functionality."""
+    
+    def __init__(self, **kwargs):
+        super().__init__(source_name="DEMO", **kwargs)
+    
+    async def discover_documents(self) -> List[DocumentMetadata]:
+        """Demo document discovery."""
+        self.logger.info("demo_discover_documents_called")
+        
+        # Simulate discovering documents
+        demo_docs = []
+        for i in range(3):
+            doc = DocumentMetadata(
+                franchise_name=f"Demo Franchise {i+1}",
+                filing_date=f"2024-01-{i+1:02d}",
+                document_type="FDD",
+                filing_number=f"DEMO-2024-{i+1:03d}",
+                source_url=f"https://demo.example.com/doc/{i+1}",
+                download_url=f"https://demo.example.com/download/{i+1}.pdf",
+                file_size=1024 * 1024 * (i + 1),  # 1MB, 2MB, 3MB
+                additional_metadata={"demo": True, "index": i}
+            )
+            demo_docs.append(doc)
+            self.logger.debug(f"demo_document_created_{i}", doc=doc.dict())
+        
+        return demo_docs
+    
+    async def extract_document_metadata(self, document_url: str) -> DocumentMetadata:
+        """Demo metadata extraction."""
+        self.logger.info("demo_extract_metadata_called", url=document_url)
+        
+        # Extract ID from URL
+        doc_id = document_url.split('/')[-1]
+        
+        # Create enriched metadata
+        metadata = DocumentMetadata(
+            franchise_name=f"Demo Franchise {doc_id} (Enriched)",
+            filing_date=f"2024-01-{int(doc_id):02d}",
+            document_type="FDD",
+            filing_number=f"DEMO-2024-{int(doc_id):03d}",
+            source_url=document_url,
+            download_url=f"https://demo.example.com/download/{doc_id}.pdf",
+            file_size=1024 * 1024 * int(doc_id),
+            additional_metadata={
+                "demo": True,
+                "index": int(doc_id) - 1,
+                "enriched": True,
+                "extraction_time": datetime.now().isoformat()
+            }
+        )
+        
+        self.logger.debug("demo_metadata_enriched", metadata=metadata.dict())
+        return metadata
+
+
+if __name__ == "__main__":
+    import logging
+    import sys
+    
+    # Set up root logger for debugging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('base_scraper_debug.log')
+        ]
+    )
+    
+    async def test_base_scraper():
+        """Test the base scraper functionality."""
+        print("\n" + "="*60)
+        print("BASE SCRAPER DEBUG TEST")
+        print("="*60 + "\n")
+        
+        # Test 1: Basic initialization and cleanup
+        print("Test 1: Basic initialization and cleanup")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper, headless=True, timeout=10000) as scraper:
+                print(f"✓ Scraper initialized: {scraper.source_name}")
+                print(f"  - Correlation ID: {scraper.correlation_id}")
+                print(f"  - Headless: {scraper.headless}")
+                print(f"  - Timeout: {scraper.timeout}ms")
+                print(f"  - Max retries: {scraper.max_retries}")
+        except Exception as e:
+            print(f"✗ Initialization failed: {e}")
+        print()
+        
+        # Test 2: Document discovery
+        print("Test 2: Document discovery")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper) as scraper:
+                docs = await scraper.discover_documents()
+                print(f"✓ Discovered {len(docs)} documents:")
+                for i, doc in enumerate(docs):
+                    print(f"  {i+1}. {doc.franchise_name}")
+                    print(f"     - Filing: {doc.filing_number}")
+                    print(f"     - Date: {doc.filing_date}")
+                    print(f"     - Size: {doc.file_size / 1024 / 1024:.1f}MB")
+        except Exception as e:
+            print(f"✗ Discovery failed: {e}")
+        print()
+        
+        # Test 3: Metadata extraction
+        print("Test 3: Metadata extraction")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper) as scraper:
+                test_url = "https://demo.example.com/doc/2"
+                metadata = await scraper.extract_document_metadata(test_url)
+                print(f"✓ Extracted metadata for: {test_url}")
+                print(f"  - Franchise: {metadata.franchise_name}")
+                print(f"  - Enriched: {metadata.additional_metadata.get('enriched', False)}")
+                print(f"  - Extraction time: {metadata.additional_metadata.get('extraction_time', 'N/A')}")
+        except Exception as e:
+            print(f"✗ Metadata extraction failed: {e}")
+        print()
+        
+        # Test 4: Full portal scrape
+        print("Test 4: Full portal scrape")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper) as scraper:
+                enriched_docs = await scraper.scrape_portal()
+                print(f"✓ Completed portal scrape:")
+                print(f"  - Total documents: {len(enriched_docs)}")
+                for i, doc in enumerate(enriched_docs):
+                    print(f"  {i+1}. {doc.franchise_name}")
+                    enriched = doc.additional_metadata.get('enriched', False)
+                    print(f"     - Enriched: {'Yes' if enriched else 'No'}")
+        except Exception as e:
+            print(f"✗ Portal scrape failed: {e}")
+        print()
+        
+        # Test 5: Navigation testing (with real browser)
+        print("Test 5: Navigation testing")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper, headless=False, timeout=5000) as scraper:
+                # Test navigation to a real website
+                await scraper.safe_navigate("https://www.example.com")
+                print("✓ Successfully navigated to example.com")
+                
+                # Get page title
+                if scraper.page:
+                    title = await scraper.page.title()
+                    print(f"  - Page title: {title}")
+                    
+                    # Take screenshot for debugging
+                    screenshot_path = "test_navigation_screenshot.png"
+                    await scraper.page.screenshot(path=screenshot_path)
+                    print(f"  - Screenshot saved: {screenshot_path}")
+        except Exception as e:
+            print(f"✗ Navigation test failed: {e}")
+        print()
+        
+        # Test 6: Error handling and retry logic
+        print("Test 6: Error handling and retry logic")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper) as scraper:
+                # Test retry with a failing operation
+                async def failing_operation():
+                    scraper.logger.debug("failing_operation_attempt")
+                    raise Exception("Simulated failure")
+                
+                try:
+                    await scraper.retry_with_backoff(failing_operation, "test_operation")
+                except WebScrapingException as e:
+                    print(f"✓ Retry logic worked correctly:")
+                    print(f"  - Attempted {scraper.max_retries} times")
+                    print(f"  - Final error: {str(e)[:100]}...")
+        except Exception as e:
+            print(f"✗ Retry test failed: {e}")
+        print()
+        
+        # Test 7: Cookie management
+        print("Test 7: Cookie management")
+        print("-" * 40)
+        try:
+            async with create_scraper(DemoScraper) as scraper:
+                # Navigate to a site that sets cookies
+                await scraper.safe_navigate("https://httpbin.org/cookies/set?test_cookie=test_value")
+                
+                # Extract cookies
+                cookies = await scraper.manage_cookies()
+                print(f"✓ Cookie management:")
+                print(f"  - Extracted {len(cookies)} cookies")
+                for name, value in cookies.items():
+                    print(f"  - {name}: {value}")
+        except Exception as e:
+            print(f"✗ Cookie test failed: {e}")
+        
+        print("\n" + "="*60)
+        print("TEST COMPLETED")
+        print("="*60 + "\n")
+    
+    # Run the async test
+    asyncio.run(test_base_scraper())

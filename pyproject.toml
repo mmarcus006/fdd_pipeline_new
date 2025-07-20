@@ -29,16 +29,20 @@ dependencies = [
     "PyPDF2",
     "click",
     "tqdm",
+    
     # Schema generation
     "genson>=1.2.0",
+    
     # Web scraping & automation
     "playwright>=1.40.0",
     "beautifulsoup4>=4.12.0",
     "httpx>=0.25.0",
+    
     # Data processing & validation
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "pandas>=2.1.0",
+    
     # Database & storage
     "supabase>=2.3.0",
     "sqlalchemy>=2.0.0",
@@ -46,6 +50,7 @@ dependencies = [
     "google-auth>=2.23.0",
     "google-auth-oauthlib>=1.1.0",
     "google-auth-httplib2>=0.2.0",
+    
     # AI/ML stack
     "instructor>=1.2.0",
     "jsonref>=1.1.0",
@@ -54,16 +59,15 @@ dependencies = [
     "ollama>=0.1.0",
     "sentence-transformers>=2.2.0",
     "mistralai",
+    
     # Document processing
     "pypdf2>=3.0.0",
-    # Note: magic-pdf installation is complex, install separately if needed
-    # "magic-pdf[full]>=0.7.0",  # MinerU local with GPU support - commented out due to dependency conflicts
-    # "torch>=2.0.0",  # Required for MinerU GPU processing - commented out due to magic-pdf conflicts
-    # Modern MinerU package (replaces magic-pdf)
     "mineru[core]>=2.1.0", # MinerU 2.0+ with Windows support
+    
     # API framework
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
+    
     # Utilities
     "python-dotenv>=1.0.0",
     "jinja2>=3.1.0",
@@ -118,6 +122,13 @@ Homepage = "https://github.com/yourorg/fdd-pipeline"
 Documentation = "https://github.com/yourorg/fdd-pipeline/docs"
 Repository = "https://github.com/yourorg/fdd-pipeline.git"
 Issues = "https://github.com/yourorg/fdd-pipeline/issues"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "flake8>=7.3.0",
+    "mypy>=1.17.0",
+]
 
 [tool.black]
 line-length = 88

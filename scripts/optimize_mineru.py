@@ -8,9 +8,12 @@ Optimizes MinerU configuration based on available hardware.
 import json
 import os
 import sys
+import time
+import logging
 import psutil
 import subprocess
 from pathlib import Path
+from datetime import datetime
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,6 +32,9 @@ class MinerUOptimizer:
 
     def detect_system(self) -> dict:
         """Detect system hardware capabilities."""
+        logger.debug("Starting system hardware detection")
+        start_time = time.time()
+        
         info = {
             "cpu_count": psutil.cpu_count(logical=False),
             "cpu_threads": psutil.cpu_count(logical=True),
@@ -37,8 +43,16 @@ class MinerUOptimizer:
             "gpu_memory_gb": 0,
             "gpu_name": "None",
         }
+        
+        logger.debug(f"CPU: {info['cpu_count']} cores, {info['cpu_threads']} threads")
+        logger.debug(f"RAM: {info['ram_gb']:.1f} GB")
+        
+        # Also get current RAM usage
+        ram_usage = psutil.virtual_memory().percent
+        logger.debug(f"Current RAM usage: {ram_usage:.1f}%")
 
         # Check for GPU
+        logger.debug("Attempting PyTorch GPU detection...")
         try:
             import torch
 
@@ -48,11 +62,21 @@ class MinerUOptimizer:
                 info["gpu_memory_gb"] = torch.cuda.get_device_properties(
                     0
                 ).total_memory / (1024**3)
+                logger.info(f"GPU detected via PyTorch: {info['gpu_name']} ({info['gpu_memory_gb']:.1f} GB)")
+                
+                # Get current GPU usage
+                gpu_memory_allocated = torch.cuda.memory_allocated(0) / (1024**3)
+                logger.debug(f"Current GPU memory allocated: {gpu_memory_allocated:.2f} GB")
+            else:
+                logger.debug("PyTorch available but no CUDA devices found")
         except ImportError:
-            logger.warning("PyTorch not installed, cannot detect GPU")
+            logger.warning("PyTorch not installed, cannot detect GPU via torch")
+        except Exception as e:
+            logger.error(f"Error during PyTorch GPU detection: {e}")
 
         # Alternative GPU detection via nvidia-smi
         if not info["gpu_available"]:
+            logger.debug("Attempting nvidia-smi GPU detection...")
             try:
                 result = subprocess.run(
                     [
@@ -62,6 +86,7 @@ class MinerUOptimizer:
                     ],
                     capture_output=True,
                     text=True,
+                    timeout=5
                 )
                 if result.returncode == 0:
                     output = result.stdout.strip()
@@ -72,15 +97,28 @@ class MinerUOptimizer:
                         # Convert MiB to GB
                         memory_mib = int(parts[1].replace(" MiB", ""))
                         info["gpu_memory_gb"] = memory_mib / 1024
-            except Exception:
-                pass
-
+                        logger.info(f"GPU detected via nvidia-smi: {info['gpu_name']} ({info['gpu_memory_gb']:.1f} GB)")
+                else:
+                    logger.debug(f"nvidia-smi returned non-zero exit code: {result.returncode}")
+                    if result.stderr:
+                        logger.debug(f"nvidia-smi stderr: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                logger.debug("nvidia-smi command timed out")
+            except FileNotFoundError:
+                logger.debug("nvidia-smi not found in PATH")
+            except Exception as e:
+                logger.debug(f"Error during nvidia-smi detection: {e}")
+        
+        elapsed = time.time() - start_time
+        logger.debug(f"System detection completed in {elapsed:.2f}s")
         return info
 
     def recommend_settings(self) -> dict:
         """Recommend optimal settings based on hardware."""
-        logger.info(f"System info: {self.system_info}")
-
+        logger.info("Generating optimization recommendations")
+        logger.debug(f"System info: {json.dumps(self.system_info, indent=2)}")
+        
+        start_time = time.time()
         recommendations = {}
 
         # GPU recommendations
@@ -156,12 +194,21 @@ class MinerUOptimizer:
 
     def apply_recommendations(self, recommendations: dict):
         """Apply recommended settings to configuration."""
-        # Load existing config
+        logger.info("Applying optimization recommendations to configuration")
+        
+        # Backup existing config if it exists
         if self.config_path.exists():
+            backup_path = self.config_path.with_suffix(f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+            logger.debug(f"Backing up existing config to: {backup_path}")
+            import shutil
+            shutil.copy2(self.config_path, backup_path)
+            
             with open(self.config_path, "r") as f:
                 config = json.load(f)
+            logger.debug(f"Loaded existing config with {len(config)} top-level keys")
         else:
             config = {}
+            logger.debug("No existing config found, creating new one")
 
         # Apply device settings
         config["device-mode"] = recommendations["device"]
@@ -204,10 +251,21 @@ class MinerUOptimizer:
 
         # Save updated config
         self.config_path.parent.mkdir(exist_ok=True)
+        
+        logger.debug(f"Saving configuration to: {self.config_path}")
+        logger.debug(f"Configuration keys: {list(config.keys())}")
+        
         with open(self.config_path, "w") as f:
             json.dump(config, f, indent=2)
-
-        logger.info(f"Updated configuration saved to {self.config_path}")
+        
+        file_size = self.config_path.stat().st_size
+        logger.info(f"Updated configuration saved to {self.config_path} ({file_size} bytes)")
+        
+        # Log applied changes
+        logger.debug("Applied recommendations:")
+        logger.debug(f"  Device mode: {recommendations.get('device', 'not set')}")
+        logger.debug(f"  Batch size: {recommendations.get('batch_size', 'not set')}")
+        logger.debug(f"  Workers: {recommendations.get('num_workers', 'not set')}")
 
     def update_environment(self, recommendations: dict):
         """Update environment variables based on recommendations."""
@@ -246,11 +304,15 @@ class MinerUOptimizer:
 
     def run_benchmark(self):
         """Run a simple benchmark to test settings."""
+        logger.info("Starting MinerU benchmark")
         print("\nRunning MinerU benchmark...")
+        benchmark_start = time.time()
 
         try:
             # Check if MinerU is installed
+            logger.debug("Checking if MinerU is installed...")
             import magic_pdf
+            logger.debug("MinerU import successful")
 
             # Create a simple test
             test_script = """
@@ -333,33 +395,131 @@ def main():
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Optimize MinerU configuration")
+    parser = argparse.ArgumentParser(
+        description="Optimize MinerU configuration based on system hardware",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Analyze system and show recommendations
+  %(prog)s
+  
+  # Apply recommendations to configuration
+  %(prog)s --apply
+  
+  # Run benchmark after optimization
+  %(prog)s --apply --benchmark
+  
+  # Export recommendations to file
+  %(prog)s --export recommendations.json
+  
+  # Enable debug logging
+  %(prog)s --debug
+        """
+    )
+    
     parser.add_argument(
         "--apply", action="store_true", help="Apply recommendations to configuration"
     )
     parser.add_argument(
         "--benchmark", action="store_true", help="Run benchmark after optimization"
     )
+    parser.add_argument(
+        "--export", help="Export recommendations to JSON file"
+    )
+    parser.add_argument(
+        "--force-device", choices=["cpu", "cuda"], help="Force specific device mode"
+    )
+    parser.add_argument(
+        "--debug", "-d", action="store_true", help="Enable debug logging"
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose output"
+    )
 
     args = parser.parse_args()
-
-    optimizer = MinerUOptimizer()
-    recommendations = optimizer.recommend_settings()
-
-    # Print report
-    optimizer.print_report(recommendations)
-
-    # Update environment
-    optimizer.update_environment(recommendations)
-
-    # Apply if requested
-    if args.apply:
-        optimizer.apply_recommendations(recommendations)
-        print("\n✅ Configuration updated!")
-
-    # Run benchmark if requested
-    if args.benchmark:
-        optimizer.run_benchmark()
+    
+    # Set up logging
+    if args.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(f'mineru_optimizer_debug_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            ]
+        )
+        logger.debug("Debug logging enabled")
+    elif args.verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    logger.debug(f"Script started with arguments: {vars(args)}")
+    logger.debug(f"Current working directory: {os.getcwd()}")
+    logger.debug(f"Python version: {sys.version}")
+    
+    try:
+        overall_start = time.time()
+        logger.info("Initializing MinerU optimizer...")
+        
+        optimizer = MinerUOptimizer()
+        
+        # Generate recommendations
+        logger.info("Analyzing system and generating recommendations...")
+        recommendations = optimizer.recommend_settings()
+        
+        # Override device if requested
+        if args.force_device:
+            logger.info(f"Forcing device mode to: {args.force_device}")
+            recommendations["device"] = args.force_device
+            if args.force_device == "cpu":
+                recommendations["use_fp16"] = False
+        
+        # Export if requested
+        if args.export:
+            logger.info(f"Exporting recommendations to: {args.export}")
+            export_data = {
+                "generated_at": datetime.now().isoformat(),
+                "system_info": optimizer.system_info,
+                "recommendations": recommendations
+            }
+            with open(args.export, 'w') as f:
+                json.dump(export_data, f, indent=2)
+            print(f"\n✅ Recommendations exported to: {args.export}")
+        
+        # Print report
+        optimizer.print_report(recommendations)
+        
+        # Update environment
+        optimizer.update_environment(recommendations)
+        
+        # Apply if requested
+        if args.apply:
+            logger.info("Applying recommendations to configuration...")
+            optimizer.apply_recommendations(recommendations)
+            print("\n✅ Configuration updated!")
+        else:
+            logger.info("Recommendations generated but not applied (use --apply to apply)")
+        
+        # Run benchmark if requested
+        if args.benchmark:
+            optimizer.run_benchmark()
+        
+        overall_time = time.time() - overall_start
+        logger.info(f"MinerU optimization completed in {overall_time:.2f}s")
+        
+    except KeyboardInterrupt:
+        logger.info("Optimization interrupted by user")
+        print("\nOptimization cancelled by user")
+        sys.exit(130)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+        import traceback
+        logger.debug(f"Traceback:\n{traceback.format_exc()}")
+        print(f"\n❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

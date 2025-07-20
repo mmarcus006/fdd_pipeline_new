@@ -10,7 +10,10 @@ import asyncio
 import json
 import os
 import sys
-from typing import Dict, Any
+import time
+import logging
+from datetime import datetime
+from typing import Dict, Any, List, Tuple
 
 import httpx
 
@@ -32,82 +35,176 @@ class HealthChecker:
     async def check_api(self) -> Dict[str, Any]:
         """Check API service health."""
         api_url = os.getenv("API_URL", "http://localhost:8000")
+        logger.debug(f"Checking API health at: {api_url}")
+        start_time = time.time()
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
+                logger.debug("Sending health check request to API...")
                 response = await client.get(f"{api_url}/health")
+                elapsed = time.time() - start_time
+                
+                logger.debug(f"API response received in {elapsed:.3f}s, status: {response.status_code}")
 
                 if response.status_code == 200:
                     data = response.json()
-                    return {"status": "healthy", "details": data}
+                    logger.info(f"API is healthy, response time: {elapsed:.3f}s")
+                    return {"status": "healthy", "details": data, "response_time_ms": int(elapsed * 1000)}
                 else:
+                    logger.warning(f"API returned unhealthy status: {response.status_code}")
                     return {
                         "status": "unhealthy",
                         "error": f"Status code: {response.status_code}",
+                        "response_time_ms": int(elapsed * 1000)
                     }
+        except httpx.ConnectError as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Failed to connect to API after {elapsed:.3f}s: {e}")
+            return {"status": "error", "error": "Connection refused - is the API running?"}
+        except httpx.TimeoutException as e:
+            logger.error(f"API health check timed out after 5s")
+            return {"status": "error", "error": "Request timed out"}
         except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Unexpected error checking API after {elapsed:.3f}s: {e}")
+            logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
             return {"status": "error", "error": str(e)}
 
     async def check_prefect(self) -> Dict[str, Any]:
         """Check Prefect server health."""
         prefect_url = os.getenv("PREFECT_API_URL", "http://localhost:4200")
+        logger.debug(f"Checking Prefect health at: {prefect_url}")
+        start_time = time.time()
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
+                logger.debug("Sending health check request to Prefect...")
                 response = await client.get(f"{prefect_url}/health")
+                elapsed = time.time() - start_time
+                
+                logger.debug(f"Prefect response received in {elapsed:.3f}s, status: {response.status_code}")
 
                 if response.status_code == 200:
                     # Get additional info
+                    logger.debug("Fetching Prefect version info...")
                     version_response = await client.get(f"{prefect_url}/version")
                     version = (
                         version_response.json()
                         if version_response.status_code == 200
                         else {}
                     )
+                    
+                    logger.info(f"Prefect is healthy, version: {version.get('version', 'unknown')}")
+                    logger.debug(f"Prefect details: {version}")
 
                     return {
                         "status": "healthy",
                         "details": {"version": version.get("version", "unknown")},
+                        "response_time_ms": int(elapsed * 1000)
                     }
                 else:
+                    logger.warning(f"Prefect returned unhealthy status: {response.status_code}")
                     return {
                         "status": "unhealthy",
                         "error": f"Status code: {response.status_code}",
+                        "response_time_ms": int(elapsed * 1000)
                     }
+        except httpx.ConnectError as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Failed to connect to Prefect after {elapsed:.3f}s: {e}")
+            return {"status": "error", "error": "Connection refused - is Prefect server running?"}
+        except httpx.TimeoutException as e:
+            logger.error(f"Prefect health check timed out after 5s")
+            return {"status": "error", "error": "Request timed out"}
         except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Unexpected error checking Prefect after {elapsed:.3f}s: {e}")
+            logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
             return {"status": "error", "error": str(e)}
 
     def check_database(self) -> Dict[str, Any]:
         """Check database connectivity."""
+        logger.debug("Checking database connectivity...")
+        start_time = time.time()
+        
         try:
+            logger.debug("Initializing DatabaseManager...")
             db = DatabaseManager()
+            init_time = time.time() - start_time
+            logger.debug(f"DatabaseManager initialized in {init_time:.3f}s")
 
+            logger.debug("Running database health check...")
+            health_start = time.time()
             if db.health_check():
+                health_time = time.time() - health_start
+                logger.debug(f"Health check passed in {health_time:.3f}s")
+                
                 # Get additional stats
+                logger.debug("Fetching database statistics...")
                 stats = self._get_database_stats(db)
+                
+                elapsed = time.time() - start_time
+                logger.info(f"Database is healthy, total check time: {elapsed:.3f}s")
+                logger.debug(f"Database stats: {stats}")
 
-                return {"status": "healthy", "details": stats}
+                return {
+                    "status": "healthy", 
+                    "details": stats,
+                    "response_time_ms": int(elapsed * 1000)
+                }
             else:
+                elapsed = time.time() - start_time
+                logger.error(f"Database health check failed after {elapsed:.3f}s")
                 return {"status": "unhealthy", "error": "Health check failed"}
         except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Database check error after {elapsed:.3f}s: {e}")
+            logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+            import traceback
+            logger.debug(f"Traceback:\n{traceback.format_exc()}")
             return {"status": "error", "error": str(e)}
 
     def _get_database_stats(self, db: DatabaseManager) -> Dict[str, int]:
         """Get database statistics."""
         stats = {}
+        logger.debug("Gathering database statistics...")
 
         try:
             # Get counts for main tables
             tables = ["franchisors", "fdds", "fdd_sections"]
-
+            
             for table in tables:
-                result = (
-                    db.query_builder(table).select("count", count="exact").execute()
-                )
-                stats[f"{table}_count"] = result.count if result else 0
+                logger.debug(f"Querying count for table: {table}")
+                try:
+                    start = time.time()
+                    result = (
+                        db.query_builder(table).select("count", count="exact").execute()
+                    )
+                    query_time = time.time() - start
+                    
+                    count = result.count if result else 0
+                    stats[f"{table}_count"] = count
+                    logger.debug(f"Table {table}: {count} records (query took {query_time:.3f}s)")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to query {table}: {e}")
+                    stats[f"{table}_count"] = -1  # Indicate error
+                    
+            # Get additional metadata tables
+            metadata_tables = ["scrape_metadata", "extraction_logs"]
+            for table in metadata_tables:
+                try:
+                    result = db.query_builder(table).select("count", count="exact").execute()
+                    count = result.count if result else 0
+                    stats[f"{table}_count"] = count
+                    logger.debug(f"Metadata table {table}: {count} records")
+                except:
+                    # These tables might not exist
+                    pass
 
         except Exception as e:
             logger.error(f"Failed to get database stats: {e}")
+            logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
 
         return stats
 
@@ -223,14 +320,23 @@ class HealthChecker:
 
     async def run_all_checks(self) -> Dict[str, Any]:
         """Run all health checks."""
-        logger.info("Running health checks...")
+        overall_start = time.time()
+        logger.info("Starting comprehensive health check...")
+        logger.debug(f"Running checks at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         # Run async checks
+        logger.debug("Running async checks (API, Prefect)...")
+        async_start = time.time()
         api_result, prefect_result = await asyncio.gather(
             self.check_api(), self.check_prefect()
         )
+        async_time = time.time() - async_start
+        logger.debug(f"Async checks completed in {async_time:.3f}s")
 
         # Run sync checks
+        logger.debug("Running sync checks...")
+        sync_start = time.time()
+        
         results = {
             "api": api_result,
             "prefect": prefect_result,
@@ -240,12 +346,24 @@ class HealthChecker:
             "mineru": self.check_mineru(),
             "file_system": self.check_file_system(),
         }
+        
+        sync_time = time.time() - sync_start
+        logger.debug(f"Sync checks completed in {sync_time:.3f}s")
 
         # Calculate overall status
         statuses = []
+        healthy_components = []
+        unhealthy_components = []
+        
         for component, result in results.items():
             if isinstance(result, dict) and "status" in result:
-                statuses.append(result["status"])
+                status = result["status"]
+                statuses.append(status)
+                
+                if status in ["healthy", "configured", "exists"]:
+                    healthy_components.append(component)
+                elif status in ["error", "unhealthy"]:
+                    unhealthy_components.append(component)
 
         if all(s in ["healthy", "configured", "exists"] for s in statuses):
             overall_status = "healthy"
@@ -253,8 +371,24 @@ class HealthChecker:
             overall_status = "unhealthy"
         else:
             overall_status = "partial"
+        
+        total_time = time.time() - overall_start
+        logger.info(f"Health check completed in {total_time:.3f}s")
+        logger.info(f"Overall status: {overall_status}")
+        logger.debug(f"Healthy components: {healthy_components}")
+        logger.debug(f"Unhealthy components: {unhealthy_components}")
 
-        return {"overall_status": overall_status, "components": results}
+        return {
+            "overall_status": overall_status, 
+            "components": results,
+            "timestamp": datetime.now().isoformat(),
+            "total_time_ms": int(total_time * 1000),
+            "summary": {
+                "healthy": len(healthy_components),
+                "unhealthy": len(unhealthy_components),
+                "total": len(statuses)
+            }
+        }
 
     def print_results(self, results: Dict[str, Any], json_format: bool = False):
         """Print health check results."""
@@ -310,22 +444,148 @@ async def main():
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="FDD Pipeline Health Check")
+    parser = argparse.ArgumentParser(
+        description="FDD Pipeline Health Check",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run basic health check
+  %(prog)s
+  
+  # Output as JSON
+  %(prog)s --json
+  
+  # Save results to file
+  %(prog)s --output health_report.json
+  
+  # Run specific checks only
+  %(prog)s --checks api database prefect
+  
+  # Enable debug logging
+  %(prog)s --debug
+  
+  # Watch mode - run checks continuously
+  %(prog)s --watch --interval 30
+        """
+    )
+    
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    parser.add_argument("--output", "-o", help="Save results to file")
+    parser.add_argument(
+        "--checks", 
+        nargs="+", 
+        choices=["api", "prefect", "database", "google_drive", "llm_apis", "mineru", "file_system"],
+        help="Run specific checks only"
+    )
+    parser.add_argument("--watch", "-w", action="store_true", help="Run continuously")
+    parser.add_argument("--interval", "-i", type=int, default=60, help="Check interval in seconds (default: 60)")
+    parser.add_argument("--debug", "-d", action="store_true", help="Enable debug logging")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
 
     args = parser.parse_args()
+    
+    # Set up logging
+    if args.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(f'health_check_debug_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            ]
+        )
+        logger.debug("Debug logging enabled")
+    elif args.verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    logger.debug(f"Script started with arguments: {vars(args)}")
+    logger.debug(f"Current working directory: {os.getcwd()}")
+    logger.debug(f"Python version: {sys.version}")
 
-    checker = HealthChecker()
-    results = await checker.run_all_checks()
-    checker.print_results(results, json_format=args.json)
+    try:
+        checker = HealthChecker()
+        
+        if args.watch:
+            # Watch mode - run continuously
+            logger.info(f"Starting health check in watch mode (interval: {args.interval}s)")
+            print(f"Running health checks every {args.interval} seconds. Press Ctrl+C to stop.")
+            
+            while True:
+                try:
+                    results = await checker.run_all_checks()
+                    
+                    # Clear screen for better readability in watch mode
+                    if not args.json and not args.output:
+                        os.system('cls' if os.name == 'nt' else 'clear')
+                    
+                    checker.print_results(results, json_format=args.json)
+                    
+                    if args.output:
+                        with open(args.output, 'w') as f:
+                            json.dump(results, f, indent=2)
+                        logger.debug(f"Results saved to: {args.output}")
+                    
+                    # Show next check time
+                    if not args.json:
+                        next_check = datetime.now().timestamp() + args.interval
+                        print(f"\nNext check at: {datetime.fromtimestamp(next_check).strftime('%H:%M:%S')}")
+                    
+                    await asyncio.sleep(args.interval)
+                    
+                except KeyboardInterrupt:
+                    logger.info("Watch mode stopped by user")
+                    break
+                    
+        else:
+            # Single run mode
+            results = await checker.run_all_checks()
+            
+            # Filter results if specific checks requested
+            if args.checks:
+                filtered_components = {
+                    k: v for k, v in results["components"].items() 
+                    if k in args.checks
+                }
+                results["components"] = filtered_components
+                logger.debug(f"Filtered to checks: {args.checks}")
+            
+            checker.print_results(results, json_format=args.json)
+            
+            # Save to file if requested
+            if args.output:
+                with open(args.output, 'w') as f:
+                    json.dump(results, f, indent=2)
+                print(f"\nResults saved to: {args.output}")
+                logger.info(f"Results saved to: {args.output}")
 
-    # Exit with appropriate code
-    if results["overall_status"] == "healthy":
-        sys.exit(0)
-    elif results["overall_status"] == "unhealthy":
+            # Exit with appropriate code
+            exit_code = 0
+            if results["overall_status"] == "healthy":
+                logger.info("All checks passed - exiting with code 0")
+                exit_code = 0
+            elif results["overall_status"] == "unhealthy":
+                logger.warning("Some checks failed - exiting with code 1")
+                exit_code = 1
+            else:
+                logger.warning("Partial health - exiting with code 2")
+                exit_code = 2
+                
+            sys.exit(exit_code)
+            
+    except KeyboardInterrupt:
+        logger.info("Health check interrupted by user")
+        print("\nHealth check cancelled by user")
+        sys.exit(130)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        logger.debug(f"Exception details: {e.__class__.__name__}: {str(e)}")
+        import traceback
+        logger.debug(f"Traceback:\n{traceback.format_exc()}")
+        print(f"\n✗ Unexpected error: {e}", file=sys.stderr)
         sys.exit(1)
-    else:
-        sys.exit(2)
 
 
 if __name__ == "__main__":

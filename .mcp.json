@@ -1,8 +1,10 @@
 {
   "mcpServers": {
     "Context7": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "@upstash/context7-mcp@latest"
       ],
@@ -16,8 +18,10 @@
       "description": "Fetch MCP server for HTTP requests"
     },
     "supabase": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "@supabase/mcp-server-supabase@latest"
       ],
@@ -27,8 +31,10 @@
       "description": "Supabase MCP server for database operations"
     },
     "supabase-with-token": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "@supabase/mcp-server-supabase@latest",
         "--access-token",
@@ -37,8 +43,10 @@
       "description": "Alternative Supabase configuration with inline token"
     },
     "openmemory": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "openmemory"
       ],
@@ -49,8 +57,10 @@
       "description": "OpenMemory MCP server for memory persistence"
     },
     "openmemory-cursor": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "openmemory"
       ],
@@ -61,8 +71,10 @@
       "description": "OpenMemory MCP server configured for Cursor"
     },
     "JinaAI": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "jina-ai-mcp-server"
       ],
@@ -72,8 +84,10 @@
       "description": "Jina AI MCP server for AI-powered search and analysis"
     },
     "Exa": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "exa-mcp-server"
       ],
@@ -83,16 +97,20 @@
       "description": "Exa MCP server for advanced search capabilities"
     },
     "puppeteer": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "@modelcontextprotocol/server-puppeteer"
       ],
       "description": "Puppeteer MCP server for browser automation"
     },
     "playwright": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "@playwright/mcp@latest"
       ],
       "description": "Playwright MCP server for cross-browser automation"
@@ -107,23 +125,11 @@
       },
       "description": "Markdownify MCP server for markdown processing"
     },
-    "mcp-doc-scraper": {
+    "airtable": {
       "command": "cmd",
       "args": [
         "/c",
         "npx",
-        "-y",
-        "@smithery/cli@latest",
-        "run",
-        "@askjohngeorge/mcp-doc-scraper",
-        "--key",
-        "96498515-e272-4d08-885c-5b9ef609a1ca"
-      ],
-      "description": "MCP documentation scraper via Smithery"
-    },
-    "airtable": {
-      "command": "npx",
-      "args": [
         "-y",
         "airtable-mcp-server"
       ],
@@ -132,13 +138,11 @@
       },
       "description": "Airtable MCP server for database operations"
     },
-    "Baserow": {
-      "url": "https://api.baserow.io/mcp/0UTGu0UqSldoun2pHzEXO7CdZLyfqyDF/sse",
-      "description": "Baserow MCP server via SSE connection"
-    },
     "firecrawl": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "firecrawl-mcp"
       ],

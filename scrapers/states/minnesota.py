@@ -5,18 +5,63 @@ import json
 import re
 from typing import List, Optional, Dict, Any
 from urllib.parse import urljoin
+import logging
+import time
+from functools import wraps
 
 from scrapers.base.base_scraper import (
     BaseScraper,
     DocumentMetadata,
+    create_scraper,
 )
 from scrapers.base.exceptions import (
     ElementNotFoundError,
     WebScrapingException,
 )
-from scrapers.utils.scraping_utils import (
+from utils.scraping_utils import (
     clean_text,
 )
+
+# Create module logger
+logger = logging.getLogger(__name__)
+
+
+def log_method_call(func):
+    """Decorator to log method calls with timing."""
+    @wraps(func)
+    async def async_wrapper(self, *args, **kwargs):
+        start_time = time.time()
+        method_name = func.__name__
+        
+        self.logger.debug(
+            f"calling_{method_name}",
+            args=str(args)[:200] if args else None,
+            kwargs=str(kwargs)[:200] if kwargs else None
+        )
+        
+        try:
+            result = await func(self, *args, **kwargs)
+            execution_time = time.time() - start_time
+            
+            self.logger.debug(
+                f"{method_name}_completed",
+                execution_time=f"{execution_time:.3f}s",
+                result_type=type(result).__name__,
+                result_size=len(result) if hasattr(result, '__len__') else None
+            )
+            
+            return result
+        except Exception as e:
+            execution_time = time.time() - start_time
+            self.logger.error(
+                f"{method_name}_failed",
+                execution_time=f"{execution_time:.3f}s",
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+    
+    return async_wrapper
 
 
 class MinnesotaScraper(BaseScraper):
@@ -45,7 +90,18 @@ class MinnesotaScraper(BaseScraper):
             timeout=timeout,
             prefect_run_id=prefect_run_id,
         )
+        
+        # Log initialization
+        self.logger.debug(
+            "minnesota_scraper_initialized",
+            base_url=self.BASE_URL,
+            search_url=self.SEARCH_URL,
+            headless=headless,
+            timeout=timeout,
+            prefect_run_id=prefect_run_id
+        )
 
+    @log_method_call
     async def discover_documents(self) -> List[DocumentMetadata]:
         """Discover available FDD documents from Minnesota CARDS portal.
 
@@ -62,6 +118,9 @@ class MinnesotaScraper(BaseScraper):
             # Navigate to the CARDS search page (already filtered for Clean FDD)
             await self.safe_navigate(self.SEARCH_URL)
 
+            if not self.page:
+                raise WebScrapingException("Page not initialized after navigation")
+                
             # Wait for the results table to load
             await self.page.wait_for_selector("#results", timeout=self.timeout)
 
@@ -160,7 +219,7 @@ class MinnesotaScraper(BaseScraper):
             self.logger.info(
                 "minnesota_cards_document_discovery_completed",
                 documents_found=len(documents),
-                pages_processed=page_num
+                pages_processed=page_num,
             )
 
             return documents
@@ -171,6 +230,7 @@ class MinnesotaScraper(BaseScraper):
                 f"Failed to discover documents from Minnesota CARDS portal: {e}"
             )
 
+    @log_method_call
     async def _extract_cards_results(self) -> List[DocumentMetadata]:
         """Extract documents from CARDS results table.
 
@@ -180,6 +240,9 @@ class MinnesotaScraper(BaseScraper):
         documents = []
 
         try:
+            if not self.page:
+                raise WebScrapingException("Page not initialized")
+                
             # Wait for results table to be populated
             await self.page.wait_for_selector("#results tr", timeout=self.timeout)
 
@@ -298,6 +361,9 @@ class MinnesotaScraper(BaseScraper):
             api_url = urljoin(self.BASE_URL, "/api/documents/next-page")
 
             # Set up headers for the HTMX request
+            if not self.page:
+                raise WebScrapingException("Page not initialized")
+                
             headers = {
                 "accept": "*/*",
                 "accept-language": "en-US,en;q=0.9",
@@ -687,6 +753,7 @@ class MinnesotaScraper(BaseScraper):
 
         return documents
 
+    @log_method_call
     async def extract_document_metadata(self, document_url: str) -> DocumentMetadata:
         """Extract detailed metadata for a specific document.
 
@@ -925,3 +992,213 @@ class MinnesotaScraper(BaseScraper):
 
     # export_to_csv method moved to tasks.document_metadata
     # Use: from tasks.document_metadata import export_documents_to_csv
+    
+if __name__ == "__main__":
+    import sys
+    from datetime import datetime
+    
+    # Set up detailed logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('minnesota_scraper_debug.log')
+        ]
+    )
+    
+    async def test_minnesota_scraper():
+        """Test the Minnesota scraper functionality."""
+        print("\n" + "="*60)
+        print("MINNESOTA SCRAPER DEBUG TEST")
+        print("="*60 + "\n")
+        
+        # Test 1: Basic initialization
+        print("Test 1: Scraper initialization")
+        print("-" * 40)
+        try:
+            scraper = MinnesotaScraper(headless=False, timeout=15000)
+            print(f"✓ Scraper created: {scraper.source_name}")
+            print(f"  - Base URL: {scraper.BASE_URL}")
+            print(f"  - Search URL: {scraper.SEARCH_URL[:50]}...")
+            print(f"  - Timeout: {scraper.timeout}ms")
+        except Exception as e:
+            print(f"✗ Initialization failed: {e}")
+        print()
+        
+        # Test 2: Browser initialization and navigation
+        print("Test 2: Browser initialization and navigation")
+        print("-" * 40)
+        try:
+            async with create_scraper(MinnesotaScraper, headless=True) as scraper:
+                print("✓ Browser initialized")
+                
+                # Test navigation to CARDS portal
+                await scraper.safe_navigate(scraper.SEARCH_URL)
+                print("✓ Navigated to CARDS search page")
+                
+                # Get page title
+                if scraper.page:
+                    title = await scraper.page.title()
+                    print(f"  - Page title: {title}")
+                    
+                    # Check for results table
+                    results_table = await scraper.page.query_selector("#results")
+                    if results_table:
+                        print("  - Results table found")
+                    else:
+                        print("  - Results table not found")
+        except Exception as e:
+            print(f"✗ Browser test failed: {e}")
+        print()
+        
+        # Test 3: Document discovery (limited)
+        print("Test 3: Document discovery (limited to 5 documents)")
+        print("-" * 40)
+        try:
+            async with create_scraper(MinnesotaScraper) as scraper:
+                # Navigate to search page
+                await scraper.safe_navigate(scraper.SEARCH_URL)
+                await scraper.page.wait_for_selector("#results", timeout=10000)
+                
+                # Extract only first page results
+                documents = await scraper._extract_cards_results()
+                
+                # Limit to first 5 for testing
+                documents = documents[:5]
+                
+                print(f"✓ Discovered {len(documents)} documents:")
+                for i, doc in enumerate(documents):
+                    print(f"\n  {i+1}. {doc.franchise_name}")
+                    print(f"     - Type: {doc.document_type}")
+                    print(f"     - Filing #: {doc.filing_number or 'N/A'}")
+                    print(f"     - Download URL: {doc.download_url[:60]}...")
+                    if doc.additional_metadata:
+                        print(f"     - Franchisor: {doc.additional_metadata.get('franchisor', 'N/A')}")
+                        print(f"     - Year: {doc.additional_metadata.get('year', 'N/A')}")
+        except Exception as e:
+            print(f"✗ Document discovery failed: {e}")
+        print()
+        
+        # Test 4: Metadata extraction methods
+        print("Test 4: Metadata extraction helper methods")
+        print("-" * 40)
+        try:
+            async with create_scraper(MinnesotaScraper) as scraper:
+                # Create a test page with sample content
+                test_html = """
+                <html>
+                <head><title>Test Franchise - Minnesota CARDS</title></head>
+                <body>
+                    <h1>Test Franchise Corporation</h1>
+                    <div class="filing-date">Filed: 03/15/2024</div>
+                    <div class="filing-number">Filing Number: #2024001234</div>
+                    <a href="/download/test.pdf">Download FDD</a>
+                    <span>File size: 2.5 MB</span>
+                </body>
+                </html>
+                """
+                
+                # Navigate to a test page
+                await scraper.page.goto("data:text/html," + test_html)
+                
+                # Test extraction methods
+                franchise_name = await scraper._extract_franchise_name()
+                print(f"✓ Franchise name: {franchise_name}")
+                
+                filing_date = await scraper._extract_filing_date()
+                print(f"✓ Filing date: {filing_date}")
+                
+                filing_number = await scraper._extract_filing_number()
+                print(f"✓ Filing number: {filing_number}")
+                
+                download_url = await scraper._extract_download_url()
+                print(f"✓ Download URL: {download_url}")
+                
+                file_size = await scraper._extract_file_size()
+                print(f"✓ File size: {file_size} bytes")
+        except Exception as e:
+            print(f"✗ Metadata extraction test failed: {e}")
+        print()
+        
+        # Test 5: Error handling
+        print("Test 5: Error handling")
+        print("-" * 40)
+        try:
+            async with create_scraper(MinnesotaScraper) as scraper:
+                # Test invalid navigation
+                try:
+                    await scraper.safe_navigate("https://invalid.url.test")
+                except Exception as e:
+                    print(f"✓ Navigation error caught: {type(e).__name__}")
+                
+                # Test element not found
+                try:
+                    await scraper.safe_click("#non-existent-element")
+                except ElementNotFoundError as e:
+                    print(f"✓ Element error caught: {type(e).__name__}")
+        except Exception as e:
+            print(f"✗ Error handling test failed: {e}")
+        print()
+        
+        # Test 6: Pagination detection
+        print("Test 6: Pagination detection")
+        print("-" * 40)
+        try:
+            async with create_scraper(MinnesotaScraper) as scraper:
+                await scraper.safe_navigate(scraper.SEARCH_URL)
+                await scraper.page.wait_for_selector("#results", timeout=10000)
+                
+                # Check for load more button
+                load_more_selectors = [
+                    'button:has-text("Load more")',
+                    "#main-content > form ul button",
+                    'button:has-text("Load More")',
+                    'button:has-text("LOAD MORE")',
+                ]
+                
+                found_button = False
+                for selector in load_more_selectors:
+                    button = await scraper.page.query_selector(selector)
+                    if button and await button.is_visible():
+                        found_button = True
+                        print(f"✓ Load more button found with selector: {selector}")
+                        
+                        # Check if enabled
+                        is_disabled = await button.get_attribute("disabled")
+                        print(f"  - Button enabled: {'No' if is_disabled else 'Yes'}")
+                        break
+                
+                if not found_button:
+                    print("✗ No load more button found")
+        except Exception as e:
+            print(f"✗ Pagination test failed: {e}")
+        print()
+        
+        # Test 7: Cookie management
+        print("Test 7: Cookie management")
+        print("-" * 40)
+        try:
+            async with create_scraper(MinnesotaScraper) as scraper:
+                await scraper.safe_navigate(scraper.BASE_URL)
+                
+                # Get cookies
+                cookies = await scraper.manage_cookies()
+                print(f"✓ Found {len(cookies)} cookies:")
+                for name, value in list(cookies.items())[:3]:  # Show first 3
+                    print(f"  - {name}: {value[:30]}...")
+        except Exception as e:
+            print(f"✗ Cookie test failed: {e}")
+        
+        # Summary
+        print("\n" + "="*60)
+        print("MINNESOTA SCRAPER TEST SUMMARY")
+        print("="*60)
+        print(f"Test completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("Check minnesota_scraper_debug.log for detailed logs")
+        print("\nNOTE: This test uses the actual Minnesota CARDS portal.")
+        print("Some tests may fail if the portal structure has changed.")
+        print("="*60 + "\n")
+    
+    # Run the async test
+    asyncio.run(test_minnesota_scraper())

@@ -11,7 +11,10 @@ import PyPDF2
 
 from models.section import FDDSection, ExtractionStatus
 from utils.logging import PipelineLogger
-from processing.extraction.llm_extraction import FDDSectionExtractor, extract_fdd_document
+from processing.extraction.llm_extraction import (
+    FDDSectionExtractor,
+    extract_fdd_document,
+)
 from models.document_models import SectionBoundary
 from processing.mineru.mineru_processing import (
     process_document_with_mineru,

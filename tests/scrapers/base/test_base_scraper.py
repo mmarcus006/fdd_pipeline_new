@@ -2,6 +2,7 @@
 # ABOUTME: Tests browser initialization, navigation, error handling, and document operations with real browsers
 
 import pytest
+import pytest_asyncio
 import asyncio
 import tempfile
 import os
@@ -22,15 +23,15 @@ from scrapers.base.exceptions import (
 
 class TestScraper(BaseScraper):
     """Concrete implementation of BaseScraper for testing."""
-    
+
     async def discover_documents(self):
         """Test implementation that searches httpbin.org."""
         # Use httpbin.org as a test endpoint
         await self.safe_navigate("https://httpbin.org/html")
-        
+
         # Extract some test data from the page
         title = await self.page.title()
-        
+
         return [
             DocumentMetadata(
                 franchise_name=title or "Test Document",
@@ -38,82 +39,78 @@ class TestScraper(BaseScraper):
                 document_type="FDD",
                 filing_number="12345",
                 source_url="https://httpbin.org/html",
-                download_url="https://httpbin.org/image/pdf"
+                download_url="https://httpbin.org/image/pdf",
             )
         ]
-    
+
     async def extract_document_metadata(self, document_url: str):
         """Test implementation."""
         await self.safe_navigate(document_url)
         title = await self.page.title()
-        
+
         return DocumentMetadata(
             franchise_name=title or "Test Franchise",
             filing_date="2024-01-01",
             document_type="FDD",
             filing_number="12345",
             source_url=document_url,
-            download_url="https://httpbin.org/image/pdf"
+            download_url="https://httpbin.org/image/pdf",
         )
 
 
 class TestBaseScraper:
     """Test suite for BaseScraper functionality using real browser instances."""
-    
-    @pytest.fixture
+
+    @pytest_asyncio.fixture
     async def scraper(self):
         """Create a real test scraper instance."""
-        scraper = TestScraper(
+        async with create_scraper(
+            TestScraper,
             source_name="TEST",
             headless=True,
             timeout=10000,
-            prefect_run_id=uuid4()
-        )
-        await scraper.initialize()
-        yield scraper
-        await scraper.cleanup()
-    
+            prefect_run_id=uuid4(),
+        ) as scraper_instance:
+            yield scraper_instance
+
     def test_initialization(self):
         """Test scraper initialization with various parameters."""
         # Test with all parameters
         run_id = uuid4()
         scraper = TestScraper(
-            source_name="TEST",
-            headless=False,
-            timeout=10000,
-            prefect_run_id=run_id
+            source_name="TEST", headless=False, timeout=10000, prefect_run_id=run_id
         )
-        
+
         assert scraper.source_name == "TEST"
         assert scraper.headless is False
         assert scraper.timeout == 10000
         assert scraper.correlation_id == str(run_id)
-        
+
         # Test with defaults
         scraper2 = TestScraper(source_name="TEST2")
         assert scraper2.headless is True
         assert scraper2.timeout == 30000
         assert scraper2.correlation_id is not None
-    
+
     @pytest.mark.asyncio
     async def test_browser_initialization(self):
         """Test real browser initialization and cleanup."""
         scraper = TestScraper(source_name="TEST", headless=True)
-        
+
         # Initialize browser
         await scraper.initialize()
-        
+
         # Verify browser is initialized
         assert scraper.playwright is not None
         assert scraper.browser is not None
         assert scraper.context is not None
         assert scraper.page is not None
         assert scraper.http_client is not None
-        
+
         # Test that we can navigate
         await scraper.page.goto("https://httpbin.org/")
         assert "httpbin" in await scraper.page.title()
-        
+
         # Test cleanup
         await scraper.cleanup()
         assert scraper.playwright is None
@@ -121,73 +118,94 @@ class TestBaseScraper:
         assert scraper.context is None
         assert scraper.page is None
         assert scraper.http_client is None
-    
+
     @pytest.mark.asyncio
     async def test_safe_navigate(self, scraper):
         """Test safe navigation to real URLs."""
         # Test successful navigation
         await scraper.safe_navigate("https://httpbin.org/html")
-        assert "httpbin" in await scraper.page.url()
-        
+        assert "httpbin" in scraper.page.url
+
         # Test navigation with wait selector
         await scraper.safe_navigate("https://httpbin.org/html", wait_for="h1")
         h1_text = await scraper.page.inner_text("h1")
         assert h1_text is not None
-        
+
         # Test navigation to invalid URL
         with pytest.raises(WebScrapingException):
-            await scraper.safe_navigate("http://invalid-domain-that-does-not-exist-12345.com")
-    
+            await scraper.safe_navigate(
+                "http://invalid-domain-that-does-not-exist-12345.com"
+            )
+
     @pytest.mark.asyncio
     async def test_safe_click(self, scraper):
         """Test safe element clicking on real page."""
-        # Navigate to a page with clickable elements
-        await scraper.safe_navigate("https://httpbin.org/forms/post")
+        # Navigate to httpbin.org which has links we can click
+        await scraper.safe_navigate("https://httpbin.org/")
+
+        # Test clicking a real link (httpbin has links to various endpoints)
+        await scraper.safe_click('a[href="/html"]')
         
-        # Test clicking a real button
-        await scraper.safe_click('button[type="submit"]')
-        
+        # Verify navigation happened
+        assert "/html" in scraper.page.url
+
         # Test element not found
         with pytest.raises(ElementNotFoundError):
             await scraper.safe_click(".non-existent-button")
-    
+
     @pytest.mark.asyncio
     async def test_safe_fill(self, scraper):
         """Test safe form filling on real forms."""
-        # Navigate to a form page
-        await scraper.safe_navigate("https://httpbin.org/forms/post")
+        # Create a simple form for testing
+        test_html = """
+        <html>
+        <body>
+            <form>
+                <input type="text" name="username" id="username" />
+                <input type="email" name="email" id="email" />
+                <textarea name="message" id="message"></textarea>
+            </form>
+        </body>
+        </html>
+        """
         
-        # Test filling a real input field
-        await scraper.safe_fill('input[name="custname"]', "Test Customer")
-        
-        # Verify the value was set
-        value = await scraper.page.input_value('input[name="custname"]')
-        assert value == "Test Customer"
-        
+        # Navigate to data URL with the form
+        await scraper.page.goto(f"data:text/html,{test_html}")
+
+        # Test filling input fields
+        await scraper.safe_fill('#username', "Test User")
+        await scraper.safe_fill('#email', "test@example.com")
+        await scraper.safe_fill('#message', "Test message content")
+
+        # Verify the values were set
+        assert await scraper.page.input_value('#username') == "Test User"
+        assert await scraper.page.input_value('#email') == "test@example.com"
+        assert await scraper.page.input_value('#message') == "Test message content"
+
         # Test element not found
         with pytest.raises(ElementNotFoundError):
             await scraper.safe_fill(".non-existent-input", "value")
-    
+
     @pytest.mark.asyncio
     async def test_download_document(self, scraper):
         """Test document download from real endpoints."""
         # Test downloading a real PDF sample
         # httpbin doesn't serve PDFs, so we'll test error handling
-        
+
         # Test non-PDF content error
         with pytest.raises(DownloadFailedError) as exc_info:
             await scraper.download_document("https://httpbin.org/html")
         assert "not a valid PDF" in str(exc_info.value)
-        
+
         # Test 404 error
         with pytest.raises(DownloadFailedError):
             await scraper.download_document("https://httpbin.org/status/404")
-    
+
     @pytest.mark.asyncio
     async def test_retry_with_backoff(self, scraper):
         """Test retry logic with real failing operations."""
         attempt_count = 0
-        
+
         async def intermittent_operation():
             nonlocal attempt_count
             attempt_count += 1
@@ -195,13 +213,15 @@ class TestBaseScraper:
                 # Simulate network failure
                 raise ConnectionError("Network temporarily unavailable")
             return "success"
-        
+
         # Test successful retry
         scraper.max_retries = 5
-        result = await scraper.retry_with_backoff(intermittent_operation, "test_operation")
+        result = await scraper.retry_with_backoff(
+            intermittent_operation, "test_operation"
+        )
         assert result == "success"
         assert attempt_count == 3
-    
+
     @pytest.mark.asyncio
     async def test_extract_table_data(self, scraper):
         """Test table data extraction from real HTML tables."""
@@ -229,95 +249,96 @@ class TestBaseScraper:
         </body>
         </html>
         """
-        
+
         # Navigate to data URL with the HTML
         await scraper.page.goto(f"data:text/html,{test_html}")
-        
+
         # Extract table data
         data = await scraper.extract_table_data("#test-table")
-        
+
         assert len(data) == 2
         assert data[0]["Name"] == "Franchise A"
         assert data[0]["Date"] == "2024-01-01"
         assert data[0]["Status"] == "Active"
         assert data[1]["Name"] == "Franchise B"
-    
+
     @pytest.mark.asyncio
     async def test_compute_document_hash(self, scraper):
         """Test document hash computation."""
         content = b"test document content"
         hash_value = scraper.compute_document_hash(content)
-        
+
         # SHA256 produces 64 character hex string
         assert len(hash_value) == 64
-        assert all(c in '0123456789abcdef' for c in hash_value)
-        
+        assert all(c in "0123456789abcdef" for c in hash_value)
+
         # Same content should produce same hash
         hash_value2 = scraper.compute_document_hash(content)
         assert hash_value == hash_value2
-        
+
         # Different content should produce different hash
         hash_value3 = scraper.compute_document_hash(b"different content")
         assert hash_value != hash_value3
-    
+
     @pytest.mark.asyncio
     async def test_context_manager(self):
         """Test scraper as async context manager with real browser."""
         async with create_scraper(TestScraper, source_name="TEST") as scraper:
             assert isinstance(scraper, TestScraper)
             assert scraper.source_name == "TEST"
-            
+
             # Verify browser is working
             await scraper.page.goto("https://httpbin.org/")
             assert "httpbin" in await scraper.page.title()
-    
+
     @pytest.mark.asyncio
     async def test_manage_cookies(self, scraper):
         """Test cookie management between browser and HTTP client."""
         # Navigate to a page that sets cookies
-        await scraper.safe_navigate("https://httpbin.org/cookies/set/test_cookie/test_value")
-        
+        await scraper.safe_navigate(
+            "https://httpbin.org/cookies/set/test_cookie/test_value"
+        )
+
         # Extract cookies
         cookies = await scraper.manage_cookies()
-        
+
         # httpbin redirects after setting cookies, so check if we have any cookies
         assert isinstance(cookies, dict)
-    
+
     @pytest.mark.asyncio
     async def test_download_file_streaming(self, scraper):
         """Test streaming file download."""
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = Path(tmpdir) / "test_download.json"
-            
+
             # Download a small JSON file
             success = await scraper.download_file_streaming(
-                "https://httpbin.org/json",
-                filepath
+                "https://httpbin.org/json", filepath
             )
-            
+
             assert success
             assert filepath.exists()
-            
+
             # Verify content
             content = filepath.read_text()
             assert "slideshow" in content  # httpbin.org/json returns slideshow data
-    
+
     @pytest.mark.asyncio
     async def test_clear_search_input(self, scraper):
         """Test clearing search input fields."""
         # Navigate to a form
         await scraper.safe_navigate("https://httpbin.org/forms/post")
-        
+
         # Fill an input
         await scraper.safe_fill('input[name="custname"]', "Initial Value")
-        
+
         # Clear it
         await scraper.clear_search_input('input[name="custname"]')
-        
+
         # Verify it's empty
         value = await scraper.page.input_value('input[name="custname"]')
         assert value == ""
-    
+
     @pytest.mark.asyncio
     async def test_handle_pagination(self, scraper):
         """Test pagination handling."""
@@ -331,14 +352,14 @@ class TestBaseScraper:
         </body>
         </html>
         """
-        
+
         await scraper.page.goto(f"data:text/html,{test_html}")
-        
+
         # Test pagination generator
         page_count = 0
         async for page in scraper.handle_pagination("#next", ".content", max_pages=5):
             page_count += 1
             # Should stop after first page due to disabled button
             break
-        
+
         assert page_count == 1

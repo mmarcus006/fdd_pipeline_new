@@ -20,7 +20,9 @@
       "mcp__ide__getDiagnostics",
       "Bash(uv run pytest:*)",
       "Bash(touch:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(pytest:*)",
+      "mcp__bright-data__scrape_as_markdown"
     ]
   }
 }

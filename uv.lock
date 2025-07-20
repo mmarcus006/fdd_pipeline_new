@@ -1094,6 +1094,13 @@ mineru-full = [
     { name = "torch" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "flake8" },
+    { name = "mypy" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
@@ -1146,6 +1153,13 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 provides-extras = ["dev", "document-processing", "mineru-full", "document-processing-cpu"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=25.1.0" },
+    { name = "flake8", specifier = ">=7.3.0" },
+    { name = "mypy", specifier = ">=1.17.0" },
+]
 
 [[package]]
 name = "ffmpy"

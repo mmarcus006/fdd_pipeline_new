@@ -4,9 +4,11 @@ This module handles splitting FDD documents into individual sections,
 creating section PDFs, and managing section metadata.
 """
 
+import logging
 import os
 import tempfile
 import time
+from functools import wraps
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, BinaryIO
 from uuid import UUID, uuid4
@@ -27,6 +29,61 @@ from models.document_models import (
 )
 from storage.database.manager import get_database_manager
 from utils.logging import PipelineLogger
+
+# Configure module-level logging
+logger = logging.getLogger(__name__)
+
+# Create debug logger that writes to a dedicated file
+debug_handler = logging.FileHandler('document_segmentation_debug.log')
+debug_handler.setLevel(logging.DEBUG)
+debug_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+)
+debug_handler.setFormatter(debug_formatter)
+logger.addHandler(debug_handler)
+logger.setLevel(logging.DEBUG)
+
+# Pipeline logger for structured logging
+pipeline_logger = PipelineLogger("document_segmentation")
+
+
+def timing_decorator(func):
+    """Decorator to time function execution."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        func_name = func.__name__
+        
+        # Log function entry
+        logger.debug(f"Entering {func_name}")
+        
+        try:
+            result = func(*args, **kwargs)
+            elapsed = time.time() - start_time
+            
+            # Log successful completion
+            logger.debug(f"Completed {func_name} in {elapsed:.3f}s")
+            pipeline_logger.info(
+                f"{func_name} completed",
+                duration_seconds=elapsed,
+                success=True
+            )
+            
+            return result
+        except Exception as e:
+            elapsed = time.time() - start_time
+            
+            # Log error
+            logger.error(f"Failed {func_name} after {elapsed:.3f}s: {str(e)}")
+            pipeline_logger.error(
+                f"{func_name} failed",
+                duration_seconds=elapsed,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+    
+    return wrapper
 
 
 class SectionValidationResult(BaseModel):
@@ -65,7 +122,9 @@ class PDFSplitter:
 
     def __init__(self):
         self.logger = PipelineLogger("pdf_splitter")
+        logger.debug("PDFSplitter initialized")
 
+    @timing_decorator
     def split_pdf_by_pages(
         self, source_pdf_path: Path, start_page: int, end_page: int
     ) -> bytes:
@@ -89,6 +148,11 @@ class PDFSplitter:
                 source_pdf=str(source_pdf_path),
                 start_page=start_page,
                 end_page=end_page,
+            )
+            
+            logger.debug(
+                f"PDF split parameters: source={source_pdf_path}, "
+                f"pages={start_page}-{end_page}"
             )
 
             if not source_pdf_path.exists():
@@ -127,14 +191,17 @@ class PDFSplitter:
                 # Add pages (convert to 0-indexed)
                 for page_num in range(start_page - 1, actual_end_page):
                     try:
+                        logger.debug(f"Adding page {page_num + 1} to split PDF")
                         page = pdf_reader.pages[page_num]
                         pdf_writer.add_page(page)
+                        logger.debug(f"Successfully added page {page_num + 1}")
                     except Exception as e:
                         self.logger.warning(
                             "Failed to add page to split PDF",
                             page_num=page_num + 1,
                             error=str(e),
                         )
+                        logger.error(f"Error adding page {page_num + 1}: {e}")
                         continue
 
                 # Write to bytes
@@ -163,6 +230,7 @@ class PDFSplitter:
             )
             raise DocumentSegmentationError(f"PDF splitting failed: {e}")
 
+    @timing_decorator
     def validate_pdf_content(self, pdf_bytes: bytes) -> SectionValidationResult:
         """
         Validate PDF content and extract quality metrics.
@@ -285,7 +353,9 @@ class SectionMetadataManager:
     def __init__(self):
         self.db_manager = get_database_manager()
         self.logger = PipelineLogger("section_metadata")
+        logger.debug("SectionMetadataManager initialized")
 
+    @timing_decorator
     def create_section_record(
         self,
         fdd_id: UUID,
@@ -342,6 +412,12 @@ class SectionMetadataManager:
                 fdd_id=str(fdd_id),
                 item_no=section_boundary.item_no,
                 needs_review=needs_review,
+            )
+            
+            logger.debug(
+                f"Section record details: id={section_id}, item={section_boundary.item_no}, "
+                f"pages={section_boundary.start_page}-{section_boundary.end_page}, "
+                f"quality_score={validation_result.quality_score:.2f}"
             )
 
             # Return as Pydantic model
@@ -473,7 +549,9 @@ class DocumentSegmentationSystem:
         self.drive_manager = drive_manager or DriveManager()
         self.db_manager = get_database_manager()
         self.logger = PipelineLogger("document_segmentation")
+        logger.debug("DocumentSegmentationSystem initialized")
 
+    @timing_decorator
     def segment_document(
         self,
         fdd_id: UUID,
@@ -531,6 +609,12 @@ class DocumentSegmentationSystem:
                         section_no=section_boundary.item_no,
                         section_name=section_boundary.item_name,
                         page_range=f"{section_boundary.start_page}-{section_boundary.end_page}",
+                    )
+                    
+                    logger.debug(
+                        f"Section {i+1}/{len(section_boundaries)}: "
+                        f"Item {section_boundary.item_no} - {section_boundary.item_name}, "
+                        f"confidence={section_boundary.confidence:.2f}"
                     )
 
                     # Split PDF for this section
@@ -665,6 +749,244 @@ class DocumentSegmentationSystem:
 
 # Import BytesIO here to avoid circular imports
 from io import BytesIO
+
+
+# Main block for testing and demonstration
+if __name__ == "__main__":
+    import json
+    from uuid import uuid4
+    
+    print("Document Segmentation System Testing")
+    print("=" * 50)
+    
+    # Test 1: PDF Splitter functionality
+    print("\n1. Testing PDF Splitter...")
+    
+    splitter = PDFSplitter()
+    
+    # Create a mock PDF for testing
+    test_pdf_path = Path("test_fdd_document.pdf")
+    
+    try:
+        # Create test PDF if PyPDF2 and reportlab are available
+        from PyPDF2 import PdfWriter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import letter
+        import tempfile
+        
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            c = canvas.Canvas(tmp.name, pagesize=letter)
+            
+            # Create a multi-page test FDD
+            pages_content = [
+                ("Cover Page", "Test Franchise Disclosure Document\n2025 Edition"),
+                ("Table of Contents", "Item 1: The Franchisor...Page 3\nItem 2: Business Experience...Page 5"),
+                ("Item 1: The Franchisor", "ABC Franchise LLC was formed in 2020..."),
+                ("Item 1 continued", "Our principal business address is..."),
+                ("Item 2: Business Experience", "Our key executives have the following experience..."),
+                ("Item 3: Litigation", "No litigation to report."),
+                ("Item 5: Initial Fees", "The initial franchise fee is $45,000..."),
+                ("Item 6: Other Fees", "Royalty: 6% of gross sales...")
+            ]
+            
+            for title, content in pages_content:
+                c.drawString(100, 750, title)
+                y_pos = 700
+                for line in content.split('\n'):
+                    c.drawString(100, y_pos, line)
+                    y_pos -= 50
+                c.showPage()
+            
+            c.save()
+            
+            # Copy to test location
+            import shutil
+            shutil.copy(tmp.name, test_pdf_path)
+            Path(tmp.name).unlink()
+        
+        print(f"Created test PDF: {test_pdf_path} with {len(pages_content)} pages")
+        
+        # Test splitting pages 3-4 (Item 1)
+        print("\nTesting PDF split for pages 3-4...")
+        start_time = time.time()
+        pdf_bytes = splitter.split_pdf_by_pages(test_pdf_path, 3, 4)
+        duration = time.time() - start_time
+        
+        print(f"Split completed in {duration:.3f}s")
+        print(f"Generated PDF size: {len(pdf_bytes)} bytes")
+        
+        # Validate the split PDF
+        print("\nValidating split PDF...")
+        validation_result = splitter.validate_pdf_content(pdf_bytes)
+        
+        print(f"Validation result:")
+        print(f"  Valid: {validation_result.is_valid}")
+        print(f"  Pages: {validation_result.page_count}")
+        print(f"  Has text: {validation_result.has_text_content}")
+        print(f"  Quality score: {validation_result.quality_score:.2f}")
+        
+    except ImportError:
+        print("ReportLab not installed. Using mock data instead.")
+        pdf_bytes = b"Mock PDF content"
+        validation_result = SectionValidationResult(
+            is_valid=True,
+            page_count=2,
+            file_size_bytes=len(pdf_bytes),
+            has_text_content=True,
+            text_sample="Item 1: The Franchisor...",
+            validation_errors=[],
+            quality_score=0.95
+        )
+    except Exception as e:
+        print(f"Test setup failed: {e}")
+        pdf_bytes = b""
+        validation_result = None
+    finally:
+        if test_pdf_path.exists():
+            test_pdf_path.unlink()
+    
+    # Test 2: Section boundaries detection
+    print("\n2. Testing Section Boundary Processing...")
+    
+    # Create mock section boundaries
+    section_boundaries = [
+        SectionBoundary(
+            item_no=1,
+            item_name="The Franchisor and any Parents, Predecessors, and Affiliates",
+            start_page=3,
+            end_page=4,
+            confidence=0.95
+        ),
+        SectionBoundary(
+            item_no=2,
+            item_name="Business Experience",
+            start_page=5,
+            end_page=5,
+            confidence=0.92
+        ),
+        SectionBoundary(
+            item_no=5,
+            item_name="Initial Fees",
+            start_page=7,
+            end_page=7,
+            confidence=0.88
+        ),
+        SectionBoundary(
+            item_no=6,
+            item_name="Other Fees",
+            start_page=8,
+            end_page=8,
+            confidence=0.90
+        )
+    ]
+    
+    print(f"\nDetected {len(section_boundaries)} sections:")
+    for sb in section_boundaries:
+        page_count = sb.end_page - sb.start_page + 1
+        print(f"  Item {sb.item_no}: Pages {sb.start_page}-{sb.end_page} "
+              f"({page_count} page{'s' if page_count > 1 else ''}), "
+              f"confidence={sb.confidence:.2f}")
+    
+    # Test 3: Metadata management
+    print("\n3. Testing Section Metadata Management...")
+    
+    metadata_manager = SectionMetadataManager()
+    
+    # Create mock section record
+    mock_fdd_id = uuid4()
+    mock_section_boundary = section_boundaries[0]  # Item 1
+    mock_drive_file_id = "mock_drive_file_123"
+    mock_drive_path = f"processed/{mock_fdd_id}/2025/section_01.pdf"
+    
+    if validation_result:
+        print("\nCreating section record...")
+        try:
+            # Note: This would normally insert into database
+            # For testing, we'll just create the object
+            section = FDDSection(
+                id=uuid4(),
+                fdd_id=mock_fdd_id,
+                item_no=mock_section_boundary.item_no,
+                item_name=mock_section_boundary.item_name,
+                start_page=mock_section_boundary.start_page,
+                end_page=mock_section_boundary.end_page,
+                drive_path=mock_drive_path,
+                drive_file_id=mock_drive_file_id,
+                extraction_status=ExtractionStatus.PENDING,
+                extraction_model=None,
+                extraction_attempts=0,
+                needs_review=False,
+                created_at=datetime.utcnow(),
+                extracted_at=None
+            )
+            
+            print(f"Created section record:")
+            print(f"  ID: {section.id}")
+            print(f"  Item: {section.item_no} - {section.item_name}")
+            print(f"  Pages: {section.start_page}-{section.end_page}")
+            print(f"  Status: {section.extraction_status.value}")
+            
+        except Exception as e:
+            print(f"Failed to create section record: {e}")
+    
+    # Test 4: Performance simulation
+    print("\n4. Segmentation Performance Metrics:")
+    print("-" * 30)
+    
+    # Simulate processing multiple sections
+    processing_times = [0.234, 0.456, 0.345, 0.567, 0.432]
+    section_counts = [23, 21, 25, 22, 20]
+    
+    for i, (proc_time, sections) in enumerate(zip(processing_times, section_counts)):
+        sections_per_sec = sections / proc_time
+        print(f"FDD {i+1}: {sections} sections in {proc_time:.3f}s "
+              f"({sections_per_sec:.1f} sections/sec)")
+    
+    avg_time = sum(processing_times) / len(processing_times)
+    total_sections = sum(section_counts)
+    avg_sections_per_sec = total_sections / sum(processing_times)
+    
+    print(f"\nAverage processing time: {avg_time:.3f}s per document")
+    print(f"Average speed: {avg_sections_per_sec:.1f} sections/sec")
+    
+    # Test 5: Progress tracking
+    print("\n5. Testing Progress Tracking...")
+    
+    progress = SegmentationProgress(
+        fdd_id=mock_fdd_id,
+        total_sections=len(section_boundaries),
+        completed_sections=0,
+        failed_sections=0,
+        start_time=datetime.utcnow(),
+        status="processing"
+    )
+    
+    print("\nSimulating section processing...")
+    for i, sb in enumerate(section_boundaries):
+        progress.current_section = sb.item_no
+        progress.completed_sections += 1
+        
+        # Simulate some failures
+        if i == 2:  # Fail on third section
+            progress.failed_sections += 1
+            progress.completed_sections -= 1
+        
+        completion_pct = (progress.completed_sections / progress.total_sections) * 100
+        print(f"  Processing Item {sb.item_no}: {completion_pct:.0f}% complete")
+        time.sleep(0.1)  # Simulate processing time
+    
+    progress.status = "completed" if progress.failed_sections == 0 else "partial"
+    progress.estimated_completion = datetime.utcnow()
+    
+    print(f"\nSegmentation completed:")
+    print(f"  Status: {progress.status}")
+    print(f"  Completed: {progress.completed_sections}/{progress.total_sections}")
+    print(f"  Failed: {progress.failed_sections}")
+    print(f"  Duration: {(progress.estimated_completion - progress.start_time).total_seconds():.1f}s")
+    
+    print("\n" + "=" * 50)
+    print("Document Segmentation testing completed!")
+    print(f"Check 'document_segmentation_debug.log' for detailed debug output")
 
 
 @task(name="segment_fdd_document", retries=2)

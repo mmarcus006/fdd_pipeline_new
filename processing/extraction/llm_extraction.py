@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import sys
+from functools import wraps
 import time
 from typing import Optional, Type, TypeVar, Union, List, Any, Dict, Tuple
 from datetime import datetime
@@ -35,6 +37,7 @@ from models.item20_outlets import Item20OutletsResponse
 from models.item21_financials import Item21FinancialsResponse
 from utils.prompt_loader import get_prompt_loader
 from utils.extraction_monitoring import get_extraction_monitor, MonitoredExtraction
+from utils.logging import PipelineLogger, get_logs_dir
 from scrapers.base.exceptions import (
     LLMExtractionException,
     ModelInitializationError,
@@ -48,8 +51,72 @@ from scrapers.base.exceptions import (
 
 T = TypeVar("T", bound=BaseModel)
 
+# Configure standard logger for fallback
 logger = logging.getLogger(__name__)
+
+# Pipeline logger for structured logging
+pipeline_logger = PipelineLogger(__name__)
+
+# Configure debug logging to file
+debug_handler = logging.FileHandler(get_logs_dir() / "llm_extraction_debug.log")
+debug_handler.setLevel(logging.DEBUG)
+debug_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+)
+debug_handler.setFormatter(debug_formatter)
+logger.addHandler(debug_handler)
+logger.setLevel(logging.DEBUG)
+
 settings = get_settings()
+
+
+def timing_decorator(func):
+    """Decorator to time function execution."""
+    @wraps(func)
+    async def async_wrapper(*args, **kwargs):
+        start_time = time.time()
+        logger.debug(f"Starting {func.__name__} with args: {args[:2]}, kwargs keys: {list(kwargs.keys())}")
+        
+        try:
+            result = await func(*args, **kwargs)
+            elapsed = time.time() - start_time
+            logger.debug(f"Completed {func.__name__} in {elapsed:.2f}s")
+            pipeline_logger.info(
+                f"{func.__name__} completed",
+                duration_seconds=elapsed,
+                success=True
+            )
+            return result
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"{func.__name__} failed after {elapsed:.2f}s: {e}")
+            pipeline_logger.error(
+                f"{func.__name__} failed",
+                duration_seconds=elapsed,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+    
+    @wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        start_time = time.time()
+        logger.debug(f"Starting {func.__name__} with args: {args[:2]}, kwargs keys: {list(kwargs.keys())}")
+        
+        try:
+            result = func(*args, **kwargs)
+            elapsed = time.time() - start_time
+            logger.debug(f"Completed {func.__name__} in {elapsed:.2f}s")
+            return result
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"{func.__name__} failed after {elapsed:.2f}s: {e}")
+            raise
+    
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    else:
+        return sync_wrapper
 
 
 class ModelType(Enum):
@@ -120,6 +187,13 @@ class ExtractionMetrics:
         self.average_response_time = (
             self.average_response_time * (self.total_extractions - 1) + response_time
         ) / self.total_extractions
+        
+        # Log metrics update
+        logger.debug(
+            f"Updated extraction metrics - Total: {self.total_extractions}, "
+            f"Success: {self.successful_extractions}, Failed: {self.failed_extractions}, "
+            f"Tokens: {self.total_tokens_used}, Cost: ${self.total_cost_usd:.4f}"
+        )
 
     @property
     def success_rate(self) -> float:
@@ -240,23 +314,38 @@ class LLMExtractor:
         )
         self.connection_pool = ConnectionPool(self.max_concurrent)
         self.metrics = ExtractionMetrics()
+        
+        logger.info(
+            f"Initializing LLMExtractor with max_concurrent={self.max_concurrent}"
+        )
+        pipeline_logger.info(
+            "LLMExtractor initialization",
+            max_concurrent=self.max_concurrent
+        )
+        
         self._initialize_clients()
 
     def _initialize_clients(self):
         """Initialize LLM clients with Instructor wrappers."""
+        logger.debug("Initializing LLM clients...")
+        
         # Initialize Gemini
+        logger.debug(f"Configuring Gemini with API key: {settings.gemini_api_key[:8]}...")
         genai.configure(api_key=settings.gemini_api_key)
         self.gemini_model = GenerativeModel("gemini-1.5-pro")
         self.gemini_client = instructor.from_gemini(
             client=self.gemini_model, use_async=True
         )
+        logger.info("Gemini client initialized successfully")
 
         # Initialize OpenAI (if configured)
         if settings.openai_api_key:
+            logger.debug(f"Configuring OpenAI with API key: {settings.openai_api_key[:8]}...")
             openai_client = AsyncOpenAI(
                 api_key=settings.openai_api_key, max_retries=2, timeout=60.0
             )
             self.openai_client = instructor.from_openai(openai_client)
+            logger.info("OpenAI client initialized successfully")
         else:
             self.openai_client = None
             logger.warning(
@@ -265,6 +354,7 @@ class LLMExtractor:
 
         # Initialize Ollama
         try:
+            logger.debug(f"Attempting to initialize Ollama at {settings.ollama_base_url}")
             from ollama import AsyncClient as OllamaClient
 
             ollama_client = OllamaClient(host=settings.ollama_base_url, timeout=120.0)
@@ -289,12 +379,28 @@ class LLMExtractor:
         """Estimate token count for content and prompt."""
         # Rough estimation: ~4 characters per token
         total_chars = len(content) + len(system_prompt)
-        return total_chars // 4
+        estimated_tokens = total_chars // 4
+        
+        logger.debug(
+            f"Token estimation - Content: {len(content)} chars, "
+            f"Prompt: {len(system_prompt)} chars, "
+            f"Estimated tokens: {estimated_tokens}"
+        )
+        
+        return estimated_tokens
 
     def calculate_cost(self, tokens: int, model_type: ModelType) -> float:
         """Calculate cost for token usage."""
         config = ModelSelector.get_model_config(model_type)
-        return tokens * config.cost_per_token
+        cost = tokens * config.cost_per_token
+        
+        logger.debug(
+            f"Cost calculation - Model: {model_type.value}, "
+            f"Tokens: {tokens}, Cost per token: ${config.cost_per_token}, "
+            f"Total cost: ${cost:.4f}"
+        )
+        
+        return cost
 
     @retry(
         stop=stop_after_attempt(3),
@@ -303,6 +409,7 @@ class LLMExtractor:
             (LLMExtractionException, ValidationError, RetryableError)
         ),
     )
+    @timing_decorator
     async def extract_with_gemini(
         self,
         content: str,
@@ -313,6 +420,12 @@ class LLMExtractor:
         """Extract structured data using Gemini Pro."""
         try:
             logger.info(f"Extracting {response_model.__name__} with Gemini")
+            pipeline_logger.info(
+                "Gemini extraction started",
+                response_model=response_model.__name__,
+                content_length=len(content),
+                temperature=temperature
+            )
 
             # Instructor with Gemini uses a different interface
             messages = [
@@ -325,11 +438,24 @@ class LLMExtractor:
                 messages=messages,
                 max_retries=2,
             )
+            
+            logger.debug(f"Gemini extraction successful for {response_model.__name__}")
+            pipeline_logger.info(
+                "Gemini extraction completed",
+                response_model=response_model.__name__,
+                success=True
+            )
 
             return response
 
         except Exception as e:
-            logger.error(f"Gemini extraction failed: {e}")
+            logger.error(f"Gemini extraction failed: {e}", exc_info=True)
+            pipeline_logger.error(
+                "Gemini extraction failed",
+                response_model=response_model.__name__,
+                error=str(e),
+                error_type=type(e).__name__
+            )
             raise LLMExtractionException(f"Gemini extraction failed: {e}")
 
     @retry(
@@ -339,6 +465,7 @@ class LLMExtractor:
             (LLMExtractionException, ValidationError, RetryableError)
         ),
     )
+    @timing_decorator
     async def extract_with_ollama(
         self,
         content: str,
@@ -353,6 +480,13 @@ class LLMExtractor:
 
         try:
             logger.info(f"Extracting {response_model.__name__} with Ollama ({model})")
+            pipeline_logger.info(
+                "Ollama extraction started",
+                response_model=response_model.__name__,
+                model=model,
+                content_length=len(content),
+                temperature=temperature
+            )
 
             response = await self.ollama_client.create(
                 model=model,
@@ -364,10 +498,25 @@ class LLMExtractor:
                 temperature=temperature,
             )
 
+            logger.debug(f"Ollama extraction successful for {response_model.__name__}")
+            pipeline_logger.info(
+                "Ollama extraction completed",
+                response_model=response_model.__name__,
+                model=model,
+                success=True
+            )
+            
             return response
 
         except Exception as e:
-            logger.error(f"Ollama extraction failed: {e}")
+            logger.error(f"Ollama extraction failed: {e}", exc_info=True)
+            pipeline_logger.error(
+                "Ollama extraction failed",
+                response_model=response_model.__name__,
+                model=model,
+                error=str(e),
+                error_type=type(e).__name__
+            )
             raise LLMExtractionException(f"Ollama extraction failed: {e}")
 
     @retry(
@@ -377,6 +526,7 @@ class LLMExtractor:
             (LLMExtractionException, ValidationError, RetryableError)
         ),
     )
+    @timing_decorator
     async def extract_with_openai(
         self,
         content: str,
@@ -391,6 +541,13 @@ class LLMExtractor:
 
         try:
             logger.info(f"Extracting {response_model.__name__} with OpenAI ({model})")
+            pipeline_logger.info(
+                "OpenAI extraction started",
+                response_model=response_model.__name__,
+                model=model,
+                content_length=len(content),
+                temperature=temperature
+            )
 
             response = await self.openai_client.create(
                 model=model,
@@ -403,12 +560,28 @@ class LLMExtractor:
                 max_retries=2,
             )
 
+            logger.debug(f"OpenAI extraction successful for {response_model.__name__}")
+            pipeline_logger.info(
+                "OpenAI extraction completed",
+                response_model=response_model.__name__,
+                model=model,
+                success=True
+            )
+            
             return response
 
         except Exception as e:
-            logger.error(f"OpenAI extraction failed: {e}")
+            logger.error(f"OpenAI extraction failed: {e}", exc_info=True)
+            pipeline_logger.error(
+                "OpenAI extraction failed",
+                response_model=response_model.__name__,
+                model=model,
+                error=str(e),
+                error_type=type(e).__name__
+            )
             raise LLMExtractionException(f"OpenAI extraction failed: {e}")
 
+    @timing_decorator
     async def extract_with_fallback(
         self,
         content: str,
@@ -444,9 +617,18 @@ class LLMExtractor:
                 ("ollama", self.extract_with_ollama),
             ]
 
+        logger.debug(f"Starting extraction with fallback chain: {[m[0] for m in model_chain]}")
+        pipeline_logger.info(
+            "Starting extraction with fallback",
+            primary_model=primary_model,
+            response_model=response_model.__name__,
+            fallback_chain=[m[0] for m in model_chain]
+        )
+        
         last_error = None
         for model_name, extract_func in model_chain:
             try:
+                logger.debug(f"Attempting extraction with {model_name}")
                 result = await extract_func(
                     content=content,
                     response_model=response_model,
@@ -454,14 +636,31 @@ class LLMExtractor:
                     temperature=temperature,
                 )
                 logger.info(f"Successfully extracted with {model_name}")
+                pipeline_logger.info(
+                    "Extraction with fallback succeeded",
+                    model_used=model_name,
+                    response_model=response_model.__name__
+                )
                 return result, model_name
             except LLMExtractionException as e:
                 last_error = e
                 logger.warning(f"{model_name} failed, trying next model: {e}")
+                pipeline_logger.warning(
+                    "Model failed in fallback chain",
+                    model=model_name,
+                    error=str(e),
+                    remaining_models=[m[0] for m in model_chain[model_chain.index((model_name, extract_func))+1:]]
+                )
                 continue
 
+        pipeline_logger.error(
+            "All models failed in fallback chain",
+            response_model=response_model.__name__,
+            last_error=str(last_error)
+        )
         raise LLMExtractionException(f"All models failed. Last error: {last_error}")
 
+    @timing_decorator
     async def extract_franchisor(
         self,
         content: str,
@@ -501,6 +700,11 @@ class LLMExtractor:
             model=primary_model.value,
         )
 
+        logger.debug(
+            f"Starting franchisor extraction - Primary model: {primary_model.value}, "
+            f"Content length: {len(content)} chars"
+        )
+        
         await self.connection_pool.acquire()
         try:
             # Extract using primary model with fallback
@@ -514,6 +718,22 @@ class LLMExtractor:
             # Estimate tokens for monitoring
             estimated_tokens = self.estimate_tokens(content, system_prompt)
             extraction_monitor.set_success(tokens_used=estimated_tokens)
+            
+            # Update metrics
+            token_usage = TokenUsage(
+                input_tokens=estimated_tokens,
+                output_tokens=0,  # We don't have exact output tokens
+                total_tokens=estimated_tokens,
+                cost_usd=self.calculate_cost(estimated_tokens, ModelType[model_used.upper()]),
+                model_used=model_used
+            )
+            self.metrics.add_extraction(True, token_usage, 0)  # Response time tracked by decorator
+            
+            logger.info(
+                f"Franchisor extraction successful - Model: {model_used}, "
+                f"Tokens: {estimated_tokens}, Cost: ${token_usage.cost_usd:.4f}"
+            )
+            
             return result
 
         except Exception as e:
@@ -550,6 +770,7 @@ class FDDSectionExtractor:
             21: Item21FinancialsResponse,
         }
 
+    @timing_decorator
     async def extract_section(
         self, section: FDDSection, content: str, primary_model: str = "gemini"
     ) -> Dict[str, Any]:
@@ -563,6 +784,19 @@ class FDDSectionExtractor:
 
         # Get section-specific prompt
         system_prompt = self._get_section_prompt(section.item_no)
+        
+        logger.debug(
+            f"Extracting section {section.item_no} - Model: {response_model.__name__}, "
+            f"Content length: {len(content)} chars, Primary model: {primary_model}"
+        )
+        pipeline_logger.info(
+            "Section extraction started",
+            section_item=section.item_no,
+            fdd_id=str(section.fdd_id),
+            response_model=response_model.__name__,
+            primary_model=primary_model,
+            content_length=len(content)
+        )
 
         # Use monitoring context
         monitor = get_extraction_monitor()
@@ -584,6 +818,19 @@ class FDDSectionExtractor:
                 # Estimate tokens (rough approximation)
                 estimated_tokens = len(content.split()) + len(system_prompt.split())
                 extraction_monitor.set_success(tokens_used=estimated_tokens)
+                
+                logger.info(
+                    f"Section {section.item_no} extraction successful - "
+                    f"Model: {model_used}, Tokens: {estimated_tokens}"
+                )
+                pipeline_logger.info(
+                    "Section extraction completed",
+                    section_item=section.item_no,
+                    fdd_id=str(section.fdd_id),
+                    model_used=model_used,
+                    tokens_used=estimated_tokens,
+                    success=True
+                )
 
                 return {
                     "status": "success",
@@ -641,6 +888,7 @@ class FDDSectionExtractor:
         return "Extract all relevant information from this FDD section."
 
 
+@timing_decorator
 async def extract_fdd_document(
     fdd: FDD,
     sections: List[FDDSection],
@@ -667,6 +915,13 @@ async def extract_fdd_document(
         f"Starting FDD document extraction",
         fdd_id=str(fdd.id),
         sections_count=len(sections),
+    )
+    pipeline_logger.info(
+        "FDD document extraction started",
+        fdd_id=str(fdd.id),
+        sections_count=len(sections),
+        primary_model=primary_model,
+        section_items=[s.item_no for s in sections]
     )
 
     # Process sections concurrently
@@ -700,12 +955,26 @@ async def extract_fdd_document(
     # Log extraction summary
     successful = sum(1 for r in results.values() if r.get("status") == "success")
     failed = sum(1 for r in results.values() if r.get("status") == "failed")
+    skipped = sum(1 for r in results.values() if r.get("status") == "skipped")
+    
     logger.info(
         "FDD document extraction completed",
         fdd_id=str(fdd.id),
         total_sections=len(results),
         successful=successful,
         failed=failed,
+    )
+    pipeline_logger.info(
+        "FDD document extraction completed",
+        fdd_id=str(fdd.id),
+        total_sections=len(results),
+        successful=successful,
+        failed=failed,
+        skipped=skipped,
+        results_by_status={
+            item: result.get("status") 
+            for item, result in results.items()
+        }
     )
 
     # Get session summary from monitor
@@ -723,3 +992,165 @@ async def extract_fdd_document(
             "session_summary": session_summary,
         },
     }
+
+
+if __name__ == "__main__":
+    """Demonstrate LLM extraction functionality."""
+    import asyncio
+    from pathlib import Path
+    
+    # Configure logging for demo
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    async def demo_extraction():
+        """Run extraction demos."""
+        print("\n" + "="*60)
+        print("LLM Extraction Module Demo")
+        print("="*60 + "\n")
+        
+        # Initialize extractor
+        print("1. Initializing LLM Extractor...")
+        extractor = LLMExtractor(max_concurrent_extractions=5)
+        print(f"   ✓ Initialized with {extractor.max_concurrent} concurrent extractions")
+        print(f"   ✓ Gemini: {'Available' if extractor.gemini_client else 'Not Available'}")
+        print(f"   ✓ OpenAI: {'Available' if extractor.openai_client else 'Not Available'}")
+        print(f"   ✓ Ollama: {'Available' if extractor.ollama_available else 'Not Available'}")
+        
+        # Demo 1: Model Selection
+        print("\n2. Model Selection Logic:")
+        test_sections = [5, 6, 7, 19, 20, 21]
+        for section in test_sections:
+            primary = extractor.select_model_for_section(section)
+            fallback = extractor.get_fallback_chain(primary)
+            print(f"   Item {section}: Primary={primary.value}, Fallback={[m.value for m in fallback]}")
+        
+        # Demo 2: Token Estimation and Cost
+        print("\n3. Token Estimation and Cost Calculation:")
+        test_content = "This is a test document. " * 100  # ~2400 chars
+        test_prompt = "Extract information from this document."
+        
+        tokens = extractor.estimate_tokens(test_content, test_prompt)
+        print(f"   Content: {len(test_content)} chars")
+        print(f"   Prompt: {len(test_prompt)} chars")
+        print(f"   Estimated tokens: {tokens}")
+        
+        for model_type in ModelType:
+            cost = extractor.calculate_cost(tokens, model_type)
+            print(f"   {model_type.value} cost: ${cost:.4f}")
+        
+        # Demo 3: Franchisor Extraction (Mock)
+        print("\n4. Mock Franchisor Extraction:")
+        mock_content = """
+        FRANCHISE DISCLOSURE DOCUMENT
+        
+        Franchisor: ACME Franchising, LLC
+        Parent Company: ACME Corporation
+        Address: 123 Main Street, Suite 500, Springfield, IL 62701
+        Phone: (555) 123-4567
+        Email: franchise@acme.com
+        Website: www.acmefranchise.com
+        
+        DBA: ACME Fast Food
+        """
+        
+        try:
+            print("   Extracting franchisor information...")
+            result = await extractor.extract_franchisor(mock_content)
+            
+            if isinstance(result, dict) and result.get("status") == "failed":
+                print(f"   ✗ Extraction failed: {result.get('error')}")
+            else:
+                print("   ✓ Extraction successful!")
+                print(f"   Franchisor: {getattr(result, 'name', 'N/A')}")
+                print(f"   Parent: {getattr(result, 'parent_company', 'N/A')}")
+        except Exception as e:
+            print(f"   ✗ Error during extraction: {e}")
+        
+        # Demo 4: Section Extraction (Mock)
+        print("\n5. Mock Section Extraction:")
+        section_extractor = FDDSectionExtractor(extractor)
+        
+        # Create mock section
+        mock_section = FDDSection(
+            fdd_id=UUID("12345678-1234-5678-1234-567812345678"),
+            item_no=5,
+            item_name="Initial Fees",
+            start_page=10,
+            end_page=12,
+            page_count=3,
+            extraction_status="pending"
+        )
+        
+        mock_item5_content = """
+        ITEM 5: INITIAL FEES
+        
+        Initial Franchise Fee: $45,000
+        
+        The initial franchise fee is $45,000 for your first location.
+        Additional locations are $35,000 each.
+        
+        Veterans receive a 10% discount.
+        Multi-unit developers receive a 15% discount for 3+ units.
+        """
+        
+        try:
+            print(f"   Extracting Item {mock_section.item_no} ({mock_section.item_name})...")
+            result = await section_extractor.extract_section(
+                mock_section, mock_item5_content, "gemini"
+            )
+            
+            if result.get("status") == "success":
+                print("   ✓ Extraction successful!")
+                print(f"   Model used: {result.get('model_used')}")
+                data = result.get("data", {})
+                if "initial_franchise_fee" in data:
+                    print(f"   Initial fee: ${data['initial_franchise_fee'].get('amount', 0):,}")
+            else:
+                print(f"   ✗ Extraction failed: {result.get('error')}")
+        except Exception as e:
+            print(f"   ✗ Error during extraction: {e}")
+        
+        # Demo 5: Metrics Summary
+        print("\n6. Extraction Metrics:")
+        metrics = extractor.metrics
+        print(f"   Total extractions: {metrics.total_extractions}")
+        print(f"   Successful: {metrics.successful_extractions}")
+        print(f"   Failed: {metrics.failed_extractions}")
+        print(f"   Success rate: {metrics.success_rate:.1f}%")
+        print(f"   Total tokens used: {metrics.total_tokens_used:,}")
+        print(f"   Total cost: ${metrics.total_cost_usd:.4f}")
+        print(f"   Average response time: {metrics.average_response_time:.2f}s")
+        
+        if metrics.model_usage_count:
+            print("\n   Model usage:")
+            for model, count in metrics.model_usage_count.items():
+                print(f"     {model}: {count} times")
+        
+        # Demo 6: Error Handling
+        print("\n7. Error Handling Demo:")
+        
+        # Test with invalid content
+        try:
+            print("   Testing with empty content...")
+            result = await extractor.extract_franchisor("")
+            print(f"   Result: {result}")
+        except Exception as e:
+            print(f"   ✓ Caught expected error: {type(e).__name__}")
+        
+        # Test with very large content
+        large_content = "Lorem ipsum " * 10000  # ~120k chars
+        tokens = extractor.estimate_tokens(large_content, test_prompt)
+        print(f"\n   Large content test:")
+        print(f"   Content size: {len(large_content):,} chars")
+        print(f"   Estimated tokens: {tokens:,}")
+        print(f"   Exceeds typical limits: {tokens > 8000}")
+        
+        print("\n" + "="*60)
+        print("Demo completed!")
+        print("="*60 + "\n")
+    
+    # Run the demo
+    asyncio.run(demo_extraction())

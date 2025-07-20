@@ -104,21 +104,21 @@ async def process_pdf(path: str, franchise_name: Optional[str], skip_db: bool):
     logger.error("PDF processing workflow not yet implemented")
     click.echo("Error: PDF processing workflow not yet implemented", err=True)
     return
-    
+
     # from workflows.process_single_pdf import process_single_fdd_flow
-    # 
+    #
     # pdf_path = Path(path)
     # if not pdf_path.exists():
     #     click.echo(f"Error: PDF file not found at {path}", err=True)
     #     return
-    # 
+    #
     # logger.info(f"Processing PDF: {pdf_path}")
-    # 
+    #
     # try:
     #     # The flow will handle all processing steps
     #     await process_single_fdd_flow.fn(str(pdf_path))
     #     logger.info("PDF processing completed successfully")
-    # 
+    #
     # except Exception as e:
     #     logger.error(f"PDF processing failed: {e}", exc_info=True)
     #     raise
@@ -130,7 +130,7 @@ async def process_pdf(path: str, franchise_name: Optional[str], skip_db: bool):
 @click.option("--run-now", is_flag=True, help="Run immediately after deployment")
 async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
     """Set up and run Prefect orchestration
-    
+
     Note: The Prefect Deployment API has changed. Use one of these methods:
     1. Direct execution: python main.py scrape --state minnesota
     2. Serve locally: python scripts/serve_flows.py --state all
@@ -139,9 +139,10 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
     if deploy:
         logger.info("Note: Using new Prefect deployment API...")
         logger.info("For local testing, consider using: python scripts/serve_flows.py")
-        
+
         # Deploy state flows using new deployment script
         import subprocess
+
         result = subprocess.run(
             ["python", "scripts/deploy_state_flows.py", "--state", "all"],
             capture_output=True,
@@ -149,7 +150,9 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
         )
         if result.returncode != 0:
             logger.error(f"State flows deployment failed: {result.stderr}")
-            logger.error("Try running flows directly with: python main.py scrape --state all")
+            logger.error(
+                "Try running flows directly with: python main.py scrape --state all"
+            )
             return
         logger.info("State flows deployed successfully")
 
@@ -179,7 +182,8 @@ async def orchestrate(deploy: bool, schedule: bool, run_now: bool):
 @cli.command()
 def flow_help():
     """Show help for running flows with the new Prefect API"""
-    click.echo("""
+    click.echo(
+        """
 FDD Pipeline Flow Execution Guide
 =================================
 
@@ -206,7 +210,8 @@ The Prefect Deployment API has changed. Here are the recommended ways to run flo
    python main.py process-pdf --path /path/to/fdd.pdf
 
 For more information, see the scripts in the scripts/ directory.
-""")
+"""
+    )
 
 
 @cli.command()
@@ -307,7 +312,9 @@ async def health_check():
 @click.option("--parallel", is_flag=True, help="Run states in parallel")
 @click.option("--limit", type=int, help="Limit number of documents to process")
 @click.option("--skip-download", is_flag=True, help="Skip downloading documents")
-async def run_all(days: int, state: str, parallel: bool, limit: Optional[int], skip_download: bool):
+async def run_all(
+    days: int, state: str, parallel: bool, limit: Optional[int], skip_download: bool
+):
     """Run complete pipeline for all configured states"""
     from datetime import timedelta
 
@@ -418,7 +425,7 @@ def main():
             # Create an async wrapper
             async def run_async():
                 # Use Click's built-in context handling
-                with cli.make_context('main', sys.argv[1:]) as ctx:
+                with cli.make_context("main", sys.argv[1:]) as ctx:
                     # Get the command and its context
                     cmd = cli.commands[command]
                     # Invoke the command with its parsed parameters

@@ -291,7 +291,14 @@ def extract_state_code(text: str) -> Optional[str]:
         "DC",  # Include DC
     }
 
-    # Look for state codes in the text
+    # Look for state codes in the text - match only if already uppercase or standalone
+    # First try to find state codes that are already uppercase (more likely to be actual state codes)
+    uppercase_matches = re.findall(r"\b[A-Z]{2}\b", text)
+    for match in uppercase_matches:
+        if match in state_codes:
+            return match
+
+    # If no uppercase matches, try the original approach
     words = re.findall(r"\b[A-Z]{2}\b", text.upper())
     for word in words:
         if word in state_codes:
@@ -347,6 +354,10 @@ def format_franchise_name(name: str) -> str:
 
     # Clean the text first
     name = clean_text(name)
+
+    # Check again after cleaning in case it becomes empty
+    if not name:
+        return "Unknown Franchise"
 
     # Common patterns to clean up
     name = re.sub(
@@ -448,9 +459,9 @@ def extract_year_from_text(text: str) -> Optional[str]:
         year_int = int(year_suffix)
         # Assume 00-30 means 2000-2030, 31-99 means 1931-1999
         if year_int <= 30:
-            return f"20{year_suffix:02d}"
+            return f"20{year_suffix}"
         else:
-            return f"19{year_suffix:02d}"
+            return f"19{year_suffix}"
 
     return None
 
