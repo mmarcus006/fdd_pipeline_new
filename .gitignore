@@ -191,3 +191,11 @@ scratch/
 browser_profile/
 mineru_downloads/
 mineru_auth.json
+
+# Franchise Scrapers outputs
+franchise_scrapers/*.csv
+franchise_scrapers/downloads/
+mn_clean_fdd.csv
+wi_active_filings.csv
+wi_registered_filings.csv
+wi_details_filings.csv

@@ -22,7 +22,26 @@
       "Bash(touch:*)",
       "Bash(git mv:*)",
       "Bash(pytest:*)",
-      "mcp__bright-data__scrape_as_markdown"
+      "mcp__bright-data__scrape_as_markdown",
+      "Bash(tree:*)",
+      "Bash(dir:*)",
+      "Bash(.venvScriptspython.exe -m pytest tests/storage/test_google_drive.py::TestDriveManager::test_initialization -v)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "Context7",
+    "fetch",
+    "supabase",
+    "supabase-with-token",
+    "openmemory",
+    "openmemory-cursor",
+    "JinaAI",
+    "Exa",
+    "puppeteer",
+    "playwright",
+    "markdownify",
+    "airtable",
+    "firecrawl"
+  ]
 }

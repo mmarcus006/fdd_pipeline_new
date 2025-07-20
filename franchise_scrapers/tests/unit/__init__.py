@@ -1,0 +1,1 @@
+# Unit tests for franchise_scrapers module

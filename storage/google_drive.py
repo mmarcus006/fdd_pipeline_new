@@ -4,23 +4,30 @@ import os
 import io
 import time
 import hashlib
+import pickle
 from pathlib import Path
-from typing import Optional, Dict, List, BinaryIO, Tuple
+from typing import Optional, Dict, List, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 from uuid import UUID
+import threading
 
 from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
-from googleapiclient import discovery
 
 from config import get_settings
 from utils.logging import get_logger
-from utils.database import get_database_manager
+from storage.database.manager import get_database_manager
 
 logger = get_logger(__name__)
+
+# OAuth2 scopes required for Google Drive operations
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
 @dataclass
@@ -40,35 +47,89 @@ class DriveFileMetadata:
 class DriveManager:
     """Manages Google Drive operations for FDD document storage."""
 
-    def __init__(self):
-        """Initialize DriveManager with service account authentication."""
+    def __init__(self, use_oauth2: bool = False, token_file: Optional[str] = None):
+        """Initialize DriveManager with authentication.
+        
+        Args:
+            use_oauth2: If True, use OAuth2 authentication instead of service account
+            token_file: Path to OAuth2 token file (only used if use_oauth2=True)
+        """
         self.settings = get_settings()
+        self.use_oauth2 = use_oauth2
+        self.token_file = token_file or "google_drive_token.pickle"
         self._service = None
+        self._service_lock = threading.Lock()
         self._folder_cache: Dict[str, str] = {}
+        self._cache_lock = threading.Lock()
         self._db_manager = get_database_manager()
         self._rate_limit_delay = 0.1  # Base delay between API calls
         self._max_retries = 3
 
     @property
     def service(self):
-        """Get authenticated Google Drive service (lazy initialization)."""
+        """Get authenticated Google Drive service (lazy initialization with thread safety)."""
         if self._service is None:
-            self._service = self._get_drive_service()
+            with self._service_lock:
+                # Double-check locking pattern
+                if self._service is None:
+                    self._service = self._get_drive_service()
         return self._service
 
     def _get_drive_service(self):
         """Get authenticated Google Drive service."""
         try:
-            credentials = service_account.Credentials.from_service_account_file(
-                self.settings.gdrive_creds_json,
-                scopes=["https://www.googleapis.com/auth/drive"],
-            )
-            service = build("drive", "v3", credentials=credentials)
-            logger.info("Google Drive service initialized successfully")
+            if self.use_oauth2:
+                # OAuth2 authentication
+                creds = self._get_oauth2_credentials()
+            else:
+                # Service account authentication
+                creds = service_account.Credentials.from_service_account_file(
+                    self.settings.gdrive_creds_json,
+                    scopes=SCOPES,
+                )
+            
+            service = build("drive", "v3", credentials=creds)
+            logger.info(f"Google Drive service initialized successfully using {'OAuth2' if self.use_oauth2 else 'service account'}")
             return service
         except Exception as e:
             logger.error("Failed to initialize Google Drive service", error=str(e))
             raise
+
+    def _get_oauth2_credentials(self):
+        """Get OAuth2 credentials, refreshing or prompting for auth as needed."""
+        
+        creds = None
+        token_path = Path(self.token_file)
+        
+        # Load existing token if available
+        if token_path.exists():
+            with open(token_path, 'rb') as token:
+                creds = pickle.load(token)
+                logger.debug("Loaded existing OAuth2 token")
+        
+        # If there are no (valid) credentials available, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                logger.info("Refreshing expired OAuth2 token")
+                creds.refresh(Request())
+            else:
+                logger.info("Initiating OAuth2 authentication flow")
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    self.settings.gdrive_creds_json, SCOPES
+                )
+                # Try console-based auth for headless environments
+                try:
+                    creds = flow.run_console()
+                except Exception:
+                    # Fallback to local server
+                    creds = flow.run_local_server(port=0)
+            
+            # Save the credentials for the next run
+            with open(token_path, 'wb') as token:
+                pickle.dump(creds, token)
+                logger.info("Saved OAuth2 token for future use")
+        
+        return creds
 
     def create_folder(self, name: str, parent_id: str) -> str:
         """Create a folder in Google Drive.
@@ -123,10 +184,18 @@ class DriveManager:
             Folder ID if exists, None otherwise
         """
         try:
-            query = f"name='{name}' and parents in '{parent_id}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-            results = (
-                self.service.files().list(q=query, fields="files(id, name)").execute()
+            # Escape single quotes in folder name to prevent query injection
+            escaped_name = name.replace("'", "\\'")
+            query = f"name='{escaped_name}' and parents in '{parent_id}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            
+            results = self._execute_with_retry(
+                lambda: self.service.files().list(
+                    q=query, 
+                    fields="files(id, name)",
+                    pageSize=1
+                ).execute()
             )
+            
             files = results.get("files", [])
 
             if files:
@@ -156,10 +225,11 @@ class DriveManager:
         Returns:
             Folder ID (existing or newly created)
         """
-        # Check cache first
+        # Check cache first with thread safety
         cache_key = f"{parent_id}/{name}"
-        if cache_key in self._folder_cache:
-            return self._folder_cache[cache_key]
+        with self._cache_lock:
+            if cache_key in self._folder_cache:
+                return self._folder_cache[cache_key]
 
         folder_id = self.folder_exists(name, parent_id)
         if folder_id:
@@ -168,8 +238,9 @@ class DriveManager:
             folder_id = self.create_folder(name, parent_id)
             logger.info("Created new folder", folder_name=name, folder_id=folder_id)
 
-        # Cache the result
-        self._folder_cache[cache_key] = folder_id
+        # Cache the result with thread safety
+        with self._cache_lock:
+            self._folder_cache[cache_key] = folder_id
         return folder_id
 
     def upload_file(
@@ -636,6 +707,52 @@ class DriveManager:
         else:
             raise Exception("All retries exhausted")
 
+    def batch_upload_files(
+        self,
+        files: List[Dict[str, any]],
+        folder_path: str,
+        fdd_id: Optional[UUID] = None,
+        document_type: str = "original",
+    ) -> List[Tuple[str, DriveFileMetadata]]:
+        """Upload multiple files in batch with metadata sync.
+
+        Args:
+            files: List of dicts with 'content', 'filename', and optional 'mime_type'
+            folder_path: Folder path for all files
+            fdd_id: Optional FDD ID for database linking
+            document_type: Type of document
+
+        Returns:
+            List of tuples of (file_id, metadata)
+        """
+        results = []
+        folder_id = self.create_folder_structure(folder_path)
+        
+        for file_info in files:
+            try:
+                file_id, metadata = self.upload_file_with_metadata_sync(
+                    file_content=file_info['content'],
+                    filename=file_info['filename'],
+                    folder_path=folder_path,
+                    fdd_id=fdd_id,
+                    document_type=document_type,
+                    mime_type=file_info.get('mime_type', 'application/pdf')
+                )
+                results.append((file_id, metadata))
+                
+                # Small delay between uploads to respect rate limits
+                time.sleep(self._rate_limit_delay)
+                
+            except Exception as e:
+                logger.error(
+                    "Failed to upload file in batch",
+                    filename=file_info['filename'],
+                    error=str(e)
+                )
+                continue
+        
+        return results
+
     def upload_file_with_metadata_sync(
         self,
         file_content: bytes,
@@ -820,6 +937,12 @@ class DriveManager:
             )
             raise
 
+    def clear_folder_cache(self) -> None:
+        """Clear the folder cache (useful after bulk operations)."""
+        with self._cache_lock:
+            self._folder_cache.clear()
+        logger.debug("Cleared folder cache")
+
     def cleanup_orphaned_files(self) -> Dict[str, int]:
         """Clean up files that exist in database but not in Google Drive.
 
@@ -888,9 +1011,240 @@ class DriveManager:
 
 
 # Global DriveManager instance
-drive_manager = DriveManager()
+drive_manager = None
 
 
-def get_drive_manager() -> DriveManager:
-    """Get the global DriveManager instance."""
+def get_drive_manager(use_oauth2: Optional[bool] = None, token_file: Optional[str] = None) -> DriveManager:
+    """Get the global DriveManager instance.
+    
+    Args:
+        use_oauth2: If True, use OAuth2 authentication. If None, check environment variable.
+        token_file: Path to OAuth2 token file
+    """
+    global drive_manager
+    
+    if drive_manager is None:
+        # Check environment variable if not specified
+        if use_oauth2 is None:
+            use_oauth2 = os.getenv("GDRIVE_USE_OAUTH2", "true").lower() == "true"
+        
+        drive_manager = DriveManager(use_oauth2=use_oauth2, token_file=token_file)
+    
     return drive_manager
+
+
+def create_folder_structure_markdown(
+    folder_id: str = "12xf8w9kvjTYlsmY0C0wyNtIehtgG8_fL",
+    output_file: str = "drive_structure.md",
+    max_depth: int = 10
+) -> str:
+    """Create a markdown file with the folder/file structure of a Google Drive folder.
+    
+    Args:
+        folder_id: Google Drive folder ID to map (defaults to specified parent folder)
+        output_file: Output markdown file name
+        max_depth: Maximum depth to traverse (prevents infinite recursion)
+        
+    Returns:
+        Path to the created markdown file
+    """
+    drive = get_drive_manager()
+    
+    def get_folder_contents(folder_id: str, depth: int = 0, prefix: str = "") -> List[str]:
+        """Recursively get folder contents."""
+        if depth > max_depth:
+            return [f"{prefix}... (max depth reached)"]
+            
+        try:
+            # Get all items in the folder
+            query = f"parents in '{folder_id}' and trashed=false"
+            results = drive.service.files().list(
+                q=query,
+                fields="files(id,name,mimeType,size,modifiedTime)",
+                orderBy="folder,name"
+            ).execute()
+            
+            files = results.get("files", [])
+            structure_lines = []
+            
+            # Separate folders and files
+            folders = [f for f in files if f["mimeType"] == "application/vnd.google-apps.folder"]
+            documents = [f for f in files if f["mimeType"] != "application/vnd.google-apps.folder"]
+            
+            # Process folders first
+            for i, folder in enumerate(folders):
+                is_last_folder = i == len(folders) - 1 and len(documents) == 0
+                folder_prefix = "└── " if is_last_folder else "├── "
+                structure_lines.append(f"{prefix}{folder_prefix}📁 **{folder['name']}/**")
+                
+                # Recursively get subfolder contents
+                next_prefix = prefix + ("    " if is_last_folder else "│   ")
+                subfolder_contents = get_folder_contents(folder["id"], depth + 1, next_prefix)
+                structure_lines.extend(subfolder_contents)
+            
+            # Process files
+            for i, file in enumerate(documents):
+                is_last = i == len(documents) - 1
+                file_prefix = "└── " if is_last else "├── "
+                
+                # Format file size
+                size = int(file.get("size", 0))
+                if size > 1024 * 1024:
+                    size_str = f"{size / (1024 * 1024):.1f} MB"
+                elif size > 1024:
+                    size_str = f"{size / 1024:.1f} KB"
+                else:
+                    size_str = f"{size} B"
+                
+                # Get file extension for emoji
+                file_ext = Path(file["name"]).suffix.lower()
+                emoji = {
+                    ".pdf": "📄",
+                    ".doc": "📝", ".docx": "📝",
+                    ".xls": "📊", ".xlsx": "📊",
+                    ".ppt": "📽️", ".pptx": "📽️",
+                    ".txt": "📃",
+                    ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".gif": "🖼️",
+                    ".mp4": "🎥", ".avi": "🎥", ".mov": "🎥",
+                    ".zip": "📦", ".rar": "📦",
+                }.get(file_ext, "📄")
+                
+                # Format modified time
+                modified = datetime.fromisoformat(file["modifiedTime"].replace("Z", "+00:00"))
+                modified_str = modified.strftime("%Y-%m-%d %H:%M")
+                
+                structure_lines.append(
+                    f"{prefix}{file_prefix}{emoji} {file['name']} *({size_str}, {modified_str})*"
+                )
+            
+            return structure_lines
+            
+        except HttpError as e:
+            logger.error(f"Error accessing folder {folder_id}: {e}")
+            return [f"{prefix}❌ Error accessing folder: {e}"]
+    
+    try:
+        # Get root folder info
+        root_info = drive.service.files().get(fileId=folder_id, fields="name").execute()
+        root_name = root_info.get("name", "Unknown Folder")
+        
+        logger.info(f"Creating folder structure for: {root_name} ({folder_id})")
+        
+        # Build the structure
+        markdown_lines = [
+            f"# Google Drive Folder Structure",
+            f"",
+            f"**Folder:** {root_name}  ",
+            f"**Folder ID:** `{folder_id}`  ",
+            f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
+            f"",
+            f"## Structure",
+            f"",
+            f"📁 **{root_name}/**"
+        ]
+        
+        # Get folder contents
+        contents = get_folder_contents(folder_id, 0, "")
+        markdown_lines.extend(contents)
+        
+        # Add footer
+        markdown_lines.extend([
+            f"",
+            f"---",
+            f"*Generated by FDD Pipeline Google Drive Manager*"
+        ])
+        
+        # Write to file
+        output_path = Path(output_file)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(markdown_lines))
+        
+        logger.info(f"Folder structure saved to: {output_path.absolute()}")
+        return str(output_path.absolute())
+        
+    except Exception as e:
+        logger.error(f"Failed to create folder structure: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    
+    # Set up logging for standalone execution
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    
+    print("Google Drive Manager - Test Operations")
+    print("=" * 50)
+    
+    try:
+        # Initialize drive manager
+        drive = get_drive_manager()
+        
+        # Test 1: Verify permissions
+        print("1. Verifying Google Drive permissions...")
+        if drive.verify_permissions():
+            print("✅ Permissions verified successfully")
+        else:
+            print("❌ Permission verification failed")
+            sys.exit(1)
+        
+        # Test 2: Create folder structure markdown
+        print("\n2. Creating folder structure markdown...")
+        structure_file = create_folder_structure_markdown()
+        print(f"✅ Folder structure saved to: {structure_file}")
+        
+        # Test 3: Upload test PDF
+        print("\n3. Uploading test PDF...")
+        test_pdf_path = Path(r"C:\Users\Miller\projects\fdd_pipeline_new\examples\2025_VALVOLINE INSTANT OIL CHANGE FRANCHISING, INC_32722-202412-04.pdf")
+        
+        if not test_pdf_path.exists():
+            print(f"❌ Test PDF not found at: {test_pdf_path}")
+            print("Please ensure the file exists or update the path")
+        else:
+            # Read the PDF file
+            with open(test_pdf_path, "rb") as f:
+                pdf_content = f.read()
+            
+            print(f"📄 File size: {len(pdf_content) / (1024*1024):.1f} MB")
+            
+            # Create test folder structure and upload
+            parent_folder_id = "12xf8w9kvjTYlsmY0C0wyNtIehtgG8_fL"
+            test_folder_path = "test"
+            
+            print(f"📁 Creating folder structure: {test_folder_path}")
+            folder_id = drive.create_folder_structure(test_folder_path, parent_folder_id)
+            
+            print(f"📤 Uploading to folder ID: {folder_id}")
+            file_id, metadata = drive.upload_file_with_metadata_sync(
+                file_content=pdf_content,
+                filename=test_pdf_path.name,
+                folder_path=test_folder_path,
+                document_type="test_upload",
+                mime_type="application/pdf"
+            )
+            
+            print(f"✅ Upload successful!")
+            print(f"   File ID: {file_id}")
+            print(f"   Drive Path: {metadata.drive_path}")
+            print(f"   File Size: {metadata.size / (1024*1024):.1f} MB")
+        
+        # Test 4: Get storage quota
+        print("\n4. Checking storage quota...")
+        quota = drive.get_storage_quota()
+        if quota:
+            used_gb = quota.get("usage", 0) / (1024**3)
+            limit_gb = quota.get("limit", 0) / (1024**3)
+            usage_pct = (quota.get("usage", 0) / quota.get("limit", 1)) * 100 if quota.get("limit") else 0
+            
+            print(f"📊 Storage Usage: {used_gb:.2f} GB / {limit_gb:.2f} GB ({usage_pct:.1f}%)")
+        else:
+            print("❌ Could not retrieve storage quota")
+        
+        print("\n🎉 All tests completed successfully!")
+        
+    except Exception as e:
+        print(f"\n❌ Error during testing: {e}")
+        logger.exception("Test execution failed")
+        sys.exit(1)
