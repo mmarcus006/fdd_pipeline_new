@@ -11,6 +11,10 @@ from urllib.parse import urljoin
 import pandas as pd
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+#TODO: DELETE DUPLICATES IN TABLE PRIOR TO DOWNLOADING PDFS
+#TODO: KEEP TRACK OF THIS DATA BY ADDING TO CSV FILE SHEET AND UPLOADING TO DATABASE
+#TODO: CONNECT THIS FLOW TO DATABASE UPOLOADS INCLUDING PDF URL 
+#TODO: ADD A CHECK TO SEE IF THE PDF HAS ALREADY BEEN DOWNLOADED
 
 # Add the parent directory to the path so we can import from storage
 sys.path.append(str(Path(__file__).parent.parent))
@@ -252,7 +256,12 @@ async def download_pdf(page, document_url: str, franchisor: str, year: str, file
     except Exception as e:
         print(f"[ERROR] Error accessing document for {franchisor}: {e}")
 
-
+#TODO: ADD A CHECK TO SEE IF THE PDF HAS ALREADY BEEN DOWNLOADED
+#TODO: ADD A CHECK TO SEE IF THE PDF HAS ALREADY BEEN UPLOADED TO GOOGLE DRIVe
+todo: need to run ssh check against all pdfs both currently uploaded and about to upload
+#TODO: need to change this from playwright to straight requests to speed up process.
+#TODO: create a utils script/function that loops through every pdf currently saved and calculates ssh value and then deletes duplicates, but does on a induvidual folder basis and then as a total for the database.
+#TODO: NEED TO MODIFY DATABASE SCHEMA AND PYDANTIC SCHEMAS TO MATGCH (MIN AMOUNT OF DATA)
 async def download_all_pdfs(df):
     """Download all PDFs from the registration DataFrame."""
     

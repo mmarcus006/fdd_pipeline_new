@@ -117,7 +117,7 @@ async def search_franchise_details(playwright: Playwright, franchise_names: list
                 # Extract hyperlinks from the Details column using BeautifulSoup
                 details_links = []
                 table_rows = table.find_all('tr')[1:]  # Skip header row
-                
+    #TODO: DELETE DUPLICATES IN TABLE PRIOR TO DOWNLOADING PDFS
                 for tr in table_rows:
                     cells = tr.find_all('td')
                     if len(cells) >= 7:  # Make sure we have enough columns
@@ -154,7 +154,9 @@ async def search_franchise_details(playwright: Playwright, franchise_names: list
                             
                         print("Processing row for: ", row['Legal Name'])
                         print(f"Details URL: {details_url}")
-                        
+      #TODO: KEEP TRACK OF THIS DATA BY ADDING TO CSV FILE SHEET AND UPLOADING TO DATABASE
+      #TODO: CONNECT THIS FLOW TO DATABASE UPOLOADS INCLUDING PDF URL 
+      #TODO: ADD A CHECK TO SEE IF THE PDF HAS ALREADY BEEN DOWNLOADED
                         filing_number = row['File Number']
                         legal_name = row['Legal Name'] 
                         trade_name = row['Trade Name']
