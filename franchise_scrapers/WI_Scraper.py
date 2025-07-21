@@ -330,7 +330,7 @@ if __name__ == "__main__":
         try:
             async with async_playwright() as playwright:
                 # Limit to 10 franchises for testing - remove max_franchises parameter to process all
-                await run(playwright, max_franchises=10)
+                await run(playwright, max_franchises=3000)
         except KeyboardInterrupt:
             print("\nScript interrupted by user. Shutting down gracefully...")
         except Exception as e:
@@ -341,6 +341,7 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nShutdown complete.")
+        sys.exit(0)
     except Exception as e:
         print(f"Failed to run main: {e}")
         sys.exit(1)

@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+"""Test version of MN scraper that processes only 3 franchises to verify Google Drive uploads."""
+
 import asyncio
 import csv
 import io
@@ -31,7 +34,10 @@ async def load_all_results(page):
     print("Checking for 'Load more' button...")
     load_more_count = 0
     
-    while True:
+    # For testing, limit to 1 click to get fewer results
+    max_clicks = 1
+    
+    while load_more_count < max_clicks:
         load_more_button = page.locator('button:has-text("Load more")')
         
         try:
@@ -72,8 +78,10 @@ def parse_table_with_links(soup, base_url):
     headers[1] = "Document Link"  # Rename for clarity
     all_data.append(headers)
 
-    # Extract rows
-    rows = table.select('tbody tr')
+    # Extract rows - limit to first 3 for testing
+    rows = table.select('tbody tr')[:3]
+    print(f"TEST MODE: Processing only first {len(rows)} rows")
+    
     for row in rows:
         cells = row.find_all(['th', 'td'])
         row_data = [cell.text.strip().replace('\n', ' | ') for cell in cells]
@@ -99,7 +107,7 @@ async def get_mn_registrations():
     # --- File and folder setup ---
     current_datetime = datetime.now()
     FORMATTED_DATETIME = current_datetime.strftime('%Y-%m-%d %H.%M')
-    FILENAME = f"MN_Active_Registrations_{FORMATTED_DATETIME}.csv"
+    FILENAME = f"MN_Active_Registrations_TEST_{FORMATTED_DATETIME}.csv"
     CSV_FOLDER_ID = "1-maRo3S8fIZQUBsish35rUab1UcCT91R"  # CSV folder ID for MN
     
     # Initialize Google Drive Manager with OAuth2
@@ -151,17 +159,9 @@ async def get_mn_registrations():
                     print(f"[SUCCESS] CSV uploaded to Google Drive with ID: {file_id}")
                 except Exception as e:
                     print(f"[ERROR] Error uploading CSV to Google Drive: {e}")
-                    # Fallback to local save if Drive upload fails
-                    DOWNLOAD_DIR = Path(__file__).parent / "downloads"
-                    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                    MN_DOWNLOAD_FOLDER = DOWNLOAD_DIR / "MN"
-                    MN_DOWNLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-                    csv_path = MN_DOWNLOAD_FOLDER / FILENAME
-                    df.to_csv(csv_path, index=False, quoting=csv.QUOTE_ALL)
-                    print(f"[WARNING] CSV saved locally as fallback: {csv_path}")
                 
-                print("\nFirst 5 rows of extracted data:")
-                print(df.head())
+                print("\nFirst 3 rows of extracted data:")
+                print(df.head(3))
                 
                 return df
             else:
@@ -170,6 +170,8 @@ async def get_mn_registrations():
             
         except Exception as e:
             print(f"An error occurred in the MN scraper: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
             
         finally:
@@ -188,6 +190,7 @@ async def download_pdf(page, document_url: str, franchisor: str, year: str, file
     
     try:
         print(f"Attempting to download PDF for {franchisor} (File Number: {file_number})")
+        print(f"Document URL: {document_url}")
         
         # Navigate to the document URL
         await page.goto(document_url, wait_until='networkidle', timeout=60000)
@@ -237,12 +240,6 @@ async def download_pdf(page, document_url: str, franchisor: str, year: str, file
                     
             except Exception as upload_error:
                 print(f"[ERROR] Error uploading PDF to Google Drive: {upload_error}")
-                # Fallback: save locally if upload fails
-                DOWNLOAD_DIR = Path(__file__).parent / "downloads" / "MN"
-                DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                fallback_path = DOWNLOAD_DIR / filename
-                temp_path.rename(fallback_path)
-                print(f"[WARNING] PDF saved locally as fallback: {fallback_path}")
                 
         except Exception as download_error:
             # PDF might be displayed inline, not downloadable
@@ -251,12 +248,12 @@ async def download_pdf(page, document_url: str, franchisor: str, year: str, file
             
     except Exception as e:
         print(f"[ERROR] Error accessing document for {franchisor}: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 async def download_all_pdfs(df):
     """Download all PDFs from the registration DataFrame."""
-    
-    PDF_FOLDER_ID = "16DZN-GCRq1ejSrjaVPCU0vjB_jgHptN7"  # PDF folder ID for MN
     
     print(f"\nStarting PDF downloads for {len(df)} registrations...")
     
@@ -305,6 +302,9 @@ async def download_all_pdfs(df):
 
 async def main():
     """Main function to run the scraper."""
+    print("\n========== TEST MN SCRAPER WITH GOOGLE DRIVE ==========")
+    print("This test will process only 3 franchises to verify Google Drive uploads\n")
+    
     df = await get_mn_registrations()
     if not df.empty:
         print(f"\n[SUCCESS] Successfully extracted {len(df)} Minnesota franchise registrations.")
@@ -313,6 +313,8 @@ async def main():
         await download_all_pdfs(df)
     else:
         print("\n[ERROR] Failed to extract registrations.")
+    
+    print("\n========== TEST COMPLETE ==========")
 
 if __name__ == "__main__":
     asyncio.run(main())
