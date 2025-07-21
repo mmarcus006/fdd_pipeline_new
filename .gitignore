@@ -192,6 +192,8 @@ Desktop.ini
 # Authentication tokens
 *.pickle
 *.pkl
+wi_scraper_token.pickle
+mn_scraper_token.pickle
 
 # Test artifacts
 test_*.png
@@ -205,6 +207,8 @@ nbproject/
 downloads/
 *.pdf
 gdrive_cred.json
+client_secret.json
+storage/client_secret.json
 logs/*.log
 examples/*_output/
 *_test_data.json
