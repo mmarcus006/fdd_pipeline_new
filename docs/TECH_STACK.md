@@ -30,6 +30,7 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Simple API for navigating HTML
   - Works with requests/httpx responses
   - Used for parsing portal search results
+  - Requires html5lib or lxml for pandas integration
 - **[httpx](https://www.python-httpx.org/)** (0.25+) - Modern HTTP client
   - Async/sync support
   - Connection pooling
@@ -46,6 +47,14 @@ This document provides a comprehensive overview of all technologies, frameworks,
   - Table parsing from HTML
   - CSV/Excel operations
   - Data cleaning utilities
+- **[html5lib](https://github.com/html5lib/html5lib-python)** (1.1+) - HTML parsing library
+  - Used by pandas for read_html operations
+  - Pure Python HTML parser
+  - Handles malformed HTML gracefully
+- **[lxml](https://lxml.de/)** (4.9+) - XML/HTML processing
+  - Fast C-based parser
+  - Alternative parser for pandas read_html
+  - Better performance than html5lib
 
 ## Database & Storage
 - **[supabase-py](https://github.com/supabase/supabase-py)** (2.3+) - Supabase client
@@ -160,6 +169,8 @@ This document provides a comprehensive overview of all technologies, frameworks,
 - **[python-json-logger](https://github.com/madzak/python-json-logger)** (2.0+) - JSON log formatting
 
 ## Additional Dependencies
+
+### File Processing
 - **[python-magic](https://github.com/ahupp/python-magic)** (0.4+) - File type detection
   - MIME type identification
   - Binary file validation

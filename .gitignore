@@ -172,6 +172,32 @@ cython_debug/
 
 # Vim
 *~
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.old
+*_old.*
+*_backup.*
+*_copy.*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Authentication tokens
+*.pickle
+*.pkl
+
+# Test artifacts
+test_*.png
+test_*.jpg
+test_*.jpeg
+test_*.gif
 # NetBeans
 nbproject/
 

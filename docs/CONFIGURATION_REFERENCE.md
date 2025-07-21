@@ -120,6 +120,49 @@ The main configuration module that loads and validates settings using Pydantic.
 - **Range**: `1` to `10`
 - **Usage**: Prevent rate limiting
 
+### API Configuration
+
+#### `INTERNAL_API_TOKEN` (required for API)
+- **Description**: Bearer token for API authentication
+- **Example**: `your-secret-token-here`
+- **Usage**: Protects API endpoints
+- **Security**: Generate a strong random token
+
+### Scraper Configuration
+
+#### `THROTTLE_SEC` (optional)
+- **Description**: Delay between scraping requests
+- **Default**: `0.5`
+- **Range**: `0.1` to `5.0`
+- **Usage**: Prevent rate limiting from state portals
+
+#### `HEADLESS` (optional)
+- **Description**: Run browser in headless mode
+- **Default**: `true`
+- **Values**: `true`, `false`
+- **Usage**: Set to `false` for debugging
+
+#### `DOWNLOAD_DIR` (optional)
+- **Description**: Directory for downloaded files
+- **Default**: `./downloads`
+- **Usage**: Where to save scraped PDFs
+
+#### `MAX_WORKERS` (optional)
+- **Description**: Maximum parallel workers for scraping
+- **Default**: `4`
+- **Range**: `1` to `10`
+- **Usage**: Concurrent franchise searches
+
+#### `PDF_RETRY_MAX` (optional)
+- **Description**: Maximum retries for PDF downloads
+- **Default**: `3`
+- **Usage**: Retry failed downloads
+
+#### `PDF_RETRY_BACKOFF` (optional)
+- **Description**: Backoff delays for retries (seconds)
+- **Default**: `[1.0, 2.0, 4.0]`
+- **Usage**: Exponential backoff between retries
+
 ## Configuration Examples
 
 ### Minimal Configuration
@@ -131,6 +174,8 @@ SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 GEMINI_API_KEY=AIzaSyD-xxxxxxxxxxxxxx
 GDRIVE_FOLDER_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs
+GDRIVE_CREDS_JSON=gdrive_cred.json
+INTERNAL_API_TOKEN=your-secret-token-here
 ```
 
 ### Development Configuration
@@ -147,6 +192,11 @@ OLLAMA_BASE_URL=http://localhost:11434
 # Lower thresholds for testing
 ENHANCED_DETECTION_CONFIDENCE_THRESHOLD=0.5
 ENHANCED_DETECTION_MIN_FUZZY_SCORE=60
+
+# Scraper settings for debugging
+HEADLESS=false
+THROTTLE_SEC=1.0
+MAX_WORKERS=2
 ```
 
 ### Production Configuration

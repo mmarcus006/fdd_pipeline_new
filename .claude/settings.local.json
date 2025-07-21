@@ -27,7 +27,8 @@
       "Bash(dir:*)",
       "Bash(.venvScriptspython.exe -m pytest tests/storage/test_google_drive.py::TestDriveManager::test_initialization -v)",
       "Bash(pip install:*)",
-      "Bash(pip install html5lib lxml)"
+      "Bash(pip install html5lib lxml)",
+      "Bash(true)"
     ]
   },
   "enableAllProjectMcpServers": true,

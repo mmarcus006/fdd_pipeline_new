@@ -44,44 +44,48 @@ python scripts/error_summary.py --hours 24
 
 #### Issue: "Element not found" errors
 **Symptoms:**
-- Selenium TimeoutException
+- Playwright TimeoutError
 - "Unable to locate element" in logs
-- Specific departments failing consistently
+- Specific state portals failing consistently
 
 **Diagnosis:**
 ```python
-# Test specific department
-python scripts/test_scrape.py --university mn --department "Computer Science" --verbose
+# Test specific state scraper
+python -m franchise_scrapers.mn.scraper --test-mode
 
 # Check page structure
-python scripts/analyze_page.py --url "https://example.edu/directory"
+python scripts/wisconsin_table_extractor.py --analyze
 ```
 
 **Solutions:**
 1. Update selectors:
    ```python
-   # src/scrapers/element_selectors.py
+   # franchise_scrapers/wi/search.py
    SELECTORS = {
-       'mn': {
-           'faculty_list': '//div[@class="faculty-listing"]',  # Old
-           'faculty_list': '//div[@class="staff-directory"]',  # New
-       }
+       'search_input': '#txtName',  # Updated from #ctl00_contentPlaceholder_txtSearch
+       'search_button': '#btnSearch',  # Updated from button with "(S)earch" text
+       'results_table': '#ctl00_contentPlaceholder_grdSearchResults'
    }
    ```
 
 2. Increase timeouts:
    ```python
-   # config/scraper_config.py
-   ELEMENT_TIMEOUT = 30  # Increase from 20
-   PAGE_LOAD_TIMEOUT = 45  # Increase from 30
+   # franchise_scrapers/browser.py
+   context.set_default_timeout(30000)  # 30 seconds
+   context.set_default_navigation_timeout(30000)  # 30 seconds
    ```
 
 3. Add retry logic:
    ```python
-   # src/scrapers/base_scraper.py
-   @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2))
-   def find_element_safe(self, selector):
-       return self.driver.find_element(By.XPATH, selector)
+   # franchise_scrapers/browser.py
+   async def with_retry(coro, *args, max_attempts=3, delays=[1.0, 2.0, 4.0], **kwargs):
+       for attempt in range(max_attempts):
+           try:
+               return await coro(*args, **kwargs)
+           except Exception as exc:
+               if attempt >= max_attempts - 1:
+                   raise
+               await sleep(delays[min(attempt, len(delays) - 1)])
    ```
 
 #### Issue: "Access denied" or rate limiting
@@ -93,20 +97,19 @@ python scripts/analyze_page.py --url "https://example.edu/directory"
 **Solutions:**
 1. Implement delays:
    ```python
-   # config/scraper_config.py
-   REQUEST_DELAY = 2  # Seconds between requests
-   DEPARTMENT_DELAY = 5  # Seconds between departments
+   # franchise_scrapers/config.py
+   THROTTLE_SEC = 0.5  # Default delay between requests
+   # Can be overridden with environment variable
    ```
 
-2. Add user agent rotation:
+2. Configure user agent:
    ```python
-   # src/scrapers/browser_config.py
-   USER_AGENTS = [
-       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-   ]
-   
-   options.add_argument(f'user-agent={random.choice(USER_AGENTS)}')
+   # franchise_scrapers/browser.py
+   context = await browser.new_context(
+       viewport={'width': 1280, 'height': 720},
+       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+       accept_downloads=True,
+   )
    ```
 
 3. Use proxy rotation (if necessary):
@@ -129,7 +132,7 @@ python scripts/analyze_page.py --url "https://example.edu/directory"
 **Diagnosis:**
 ```bash
 # Test connection
-python scripts/test_database.py
+python scripts/health_check.py --check database
 
 # Check network latency
 ping your-project.supabase.co
@@ -190,30 +193,29 @@ python -c "import os; print(os.getenv('SUPABASE_URL'))"
 **Solutions:**
 1. Add data validation:
    ```python
-   # src/utils/validators.py
-   def validate_faculty_data(data):
-       required_fields = ['name', 'department', 'university']
-       for field in required_fields:
-           if field not in data or not data[field]:
-               raise ValueError(f"Missing required field: {field}")
+   # models/fdd.py - Using Pydantic validation
+   class FDDCreate(FDDBase):
+       filing_year: int = Field(..., ge=2000, le=datetime.now().year)
+       state_code: str = Field(..., regex='^[A-Z]{2}$')
+       pdf_url: HttpUrl
+       pdf_hash: Optional[str] = Field(None, regex='^[a-f0-9]{64}$')
        
-       # Email validation
-       if 'email' in data and data['email']:
-           if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', data['email']):
-               data['email'] = None
-       
-       return data
+       @validator('filing_year')
+       def validate_filing_year(cls, v):
+           if v > datetime.now().year:
+               raise ValueError('Filing year cannot be in the future')
+           return v
    ```
 
 2. Implement upsert logic:
    ```python
-   # src/utils/database_operations.py
-   def upsert_faculty(self, faculty_data):
-       return self.client.table('faculty')\
+   # storage/database/manager.py
+   async def upsert_fdd(self, fdd_data: dict) -> dict:
+       return await self.client.table('fdds')\
            .upsert(
-               faculty_data,
-               on_conflict='email,university',
-               returning='minimal'
+               fdd_data,
+               on_conflict='franchisor_id,filing_year,state_code',
+               returning='representation'
            ).execute()
    ```
 
@@ -228,13 +230,13 @@ python -c "import os; print(os.getenv('SUPABASE_URL'))"
 **Diagnosis:**
 ```bash
 # Check deployment status
-prefect deployment inspect minnesota-scrape/prod
+prefect deployment inspect minnesota-fdd-scraper/production
 
 # Verify schedules
-prefect deployment schedule ls minnesota-scrape/prod
+prefect deployment schedule ls minnesota-fdd-scraper/production
 
 # Check worker status
-prefect work-pool inspect fdd-local-pool
+prefect work-pool inspect default-agent-pool
 ```
 
 **Solutions:**
@@ -245,21 +247,21 @@ prefect work-pool inspect fdd-local-pool
    kill -TERM <worker-pid>
    
    # Start new worker
-   prefect worker start --pool fdd-local-pool --limit 1
+   prefect worker start --pool default-agent-pool --limit 1
    ```
 
 2. Fix timezone issues:
    ```bash
    # Update schedule with correct timezone
-   prefect deployment schedule delete minnesota-scrape/prod <schedule-id>
-   prefect deployment schedule create minnesota-scrape/prod \
+   prefect deployment schedule delete minnesota-fdd-scraper/production <schedule-id>
+   prefect deployment schedule create minnesota-fdd-scraper/production \
      --cron "0 2 * * 1" \
      --timezone "America/Chicago"
    ```
 
 3. Re-deploy flows:
    ```bash
-   python deployments/deploy_mn_flow.py --force
+   python scripts/deploy_state_flows.py --state mn --force
    ```
 
 #### Issue: Flow runs hanging or timing out
@@ -271,34 +273,34 @@ prefect work-pool inspect fdd-local-pool
 **Solutions:**
 1. Add flow timeouts:
    ```python
-   # src/flows/scraper_flow.py
+   # workflows/base_state_flow.py
    from prefect import flow
    from datetime import timedelta
    
    @flow(
-       name="minnesota-scrape",
+       name="{state_name}-fdd-scraper",
        timeout_seconds=7200,  # 2 hours
        retries=2,
        retry_delay_seconds=300
    )
-   def scrape_minnesota():
+   async def create_state_flow(config: StateConfig):
        pass
    ```
 
 2. Implement task-level timeouts:
    ```python
-   @task(timeout_seconds=300)  # 5 minutes per department
-   def scrape_department(url, department):
+   @task(timeout_seconds=300)  # 5 minutes per FDD
+   async def download_fdd(page: Page, row: CleanFDDRow) -> CleanFDDRow:
        pass
    ```
 
 3. Add progress monitoring:
    ```python
    @task
-   def scrape_with_progress(departments):
-       for i, dept in enumerate(departments):
-           logger.info(f"Processing {i+1}/{len(departments)}: {dept}")
-           yield scrape_department(dept)
+   async def download_pdfs(rows: List[CleanFDDRow], page: Page) -> List[CleanFDDRow]:
+       for i, row in enumerate(rows, 1):
+           logger.info(f"Processing {i}/{len(rows)}: {row.legal_name}")
+           yield await download_pdf(page, row)
    ```
 
 ### 4. Google Drive Issues
@@ -313,21 +315,24 @@ prefect work-pool inspect fdd-local-pool
 1. Refresh service account:
    ```bash
    # Verify service account file
-   python scripts/test_google_auth.py
+   python storage/authenticate_gdrive.py
    
    # Check permissions
-   python scripts/check_drive_permissions.py --folder-id $GOOGLE_DRIVE_FOLDER_ID
+   python scripts/setup_gdrive_structure.py --check-only
    ```
 
 2. Re-authenticate:
    ```python
-   # src/utils/google_drive.py
-   def get_drive_service():
-       creds = service_account.Credentials.from_service_account_file(
-           os.getenv('GOOGLE_SERVICE_ACCOUNT_PATH'),
-           scopes=['https://www.googleapis.com/auth/drive']
-       )
-       return build('drive', 'v3', credentials=creds)
+   # storage/google_drive.py
+   def __init__(self, use_oauth2: bool = False):
+       if use_oauth2:
+           creds = self._get_oauth2_credentials()
+       else:
+           creds = service_account.Credentials.from_service_account_file(
+               settings.GDRIVE_CREDS_JSON,
+               scopes=['https://www.googleapis.com/auth/drive']
+           )
+       self.service = build('drive', 'v3', credentials=creds)
    ```
 
 #### Issue: Upload failures
@@ -379,60 +384,56 @@ prefect work-pool inspect fdd-local-pool
 
 #### Issue: Slow scraping performance
 **Symptoms:**
-- Departments taking >1 minute each
-- Total runtime >3 hours
+- FDD downloads taking >1 minute each
+- Total runtime >3 hours for a state
 - Memory usage increasing
 
 **Diagnosis:**
 ```python
 # Profile scraping performance
-python -m cProfile -o profile.stats scripts/test_scrape.py
+python -m cProfile -o profile.stats franchise_scrapers/mn/scraper.py --test
 python scripts/analyze_profile.py profile.stats
 ```
 
 **Solutions:**
 1. Implement parallel processing:
    ```python
-   # src/scrapers/parallel_scraper.py
-   from concurrent.futures import ThreadPoolExecutor
-   
-   def scrape_departments_parallel(departments, max_workers=4):
-       with ThreadPoolExecutor(max_workers=max_workers) as executor:
-           futures = []
-           for dept in departments:
-               future = executor.submit(scrape_department, dept)
-               futures.append(future)
-           
-           results = []
-           for future in as_completed(futures):
-               try:
-                   result = future.result(timeout=300)
-                   results.append(result)
-               except TimeoutError:
-                   logger.error(f"Department scrape timed out")
+   # franchise_scrapers/wi/search.py
+   async def search_wi_franchises(active_rows: List[WIActiveRow], max_workers: int = None):
+       if max_workers is None:
+           max_workers = settings.MAX_WORKERS
        
-       return results
+       # Process franchises in batches
+       for i in range(0, len(active_rows), max_workers):
+           batch = active_rows[i:i + max_workers]
+           tasks = [
+               search_single_franchise(browser, active_row)
+               for active_row in batch
+           ]
+           results = await asyncio.gather(*tasks, return_exceptions=True)
    ```
 
 2. Optimize selectors:
    ```python
-   # Use CSS selectors when faster
-   # Instead of: //div[@class='faculty']//span[@class='name']
-   # Use: div.faculty span.name
+   # Use specific IDs when available
+   # Instead of: 'button:has-text("Load more")'
+   # Use: '#pagination button.btn.btn-primary'
    
-   def get_faculty_names(self):
-       return self.driver.find_elements(By.CSS_SELECTOR, "div.faculty span.name")
+   async def click_load_more(page: Page) -> bool:
+       button = await page.query_selector("#pagination button.btn.btn-primary")
+       if button and await button.is_visible():
+           await button.click()
    ```
 
 3. Cache static data:
    ```python
-   # src/utils/cache.py
+   # franchise_scrapers/models.py
    from functools import lru_cache
    
-   @lru_cache(maxsize=100)
-   def get_department_list(university):
-       # Cache department lists for 24 hours
-       return scrape_department_list(university)
+   @lru_cache(maxsize=1000)
+   def get_cached_franchise_data(franchise_name: str, state: str):
+       # Cache franchise lookups during session
+       return search_franchise_in_db(franchise_name, state)
    ```
 
 ### 6. Email Alert Issues
@@ -569,23 +570,24 @@ curl -I https://your-project.supabase.co
 
 ### 1. Automated Testing
 ```python
-# tests/test_scrapers.py
+# tests/scrapers/states/test_minnesota.py
 import pytest
-from src.scrapers import MinnesotaScraper
+from franchise_scrapers.mn.scraper import scrape_minnesota
 
-@pytest.fixture
-def scraper():
-    return MinnesotaScraper()
+@pytest.mark.asyncio
+async def test_minnesota_scraper():
+    # Test with limited pages
+    rows = await scrape_minnesota(download_pdfs=False, max_pages=1)
+    assert len(rows) > 0
+    assert all(hasattr(row, 'document_id') for row in rows)
+    assert all(hasattr(row, 'legal_name') for row in rows)
 
-def test_department_list(scraper):
-    departments = scraper.get_departments()
-    assert len(departments) > 0
-    assert all('name' in dept for dept in departments)
-
-def test_faculty_scrape(scraper):
-    faculty = scraper.scrape_department("Computer Science")
-    assert len(faculty) > 0
-    assert all('email' in f for f in faculty)
+@pytest.mark.asyncio
+async def test_pdf_download():
+    # Test single PDF download
+    rows = await scrape_minnesota(download_pdfs=True, max_pages=1)
+    successful = [r for r in rows if r.pdf_status == 'ok']
+    assert len(successful) > 0
 ```
 
 ### 2. Health Monitoring
@@ -595,46 +597,47 @@ def test_faculty_scrape(scraper):
 import time
 from datetime import datetime, timedelta
 
-def monitor_pipeline_health():
+async def monitor_pipeline_health():
     while True:
         try:
-            # Check last successful run
-            check_last_run()
+            # Check last successful FDD scrape
+            check_last_fdd_scrape()
             
-            # Monitor error rate
-            check_error_rate()
+            # Monitor MinerU API status
+            check_mineru_health()
             
-            # Verify system resources
-            check_system_health()
+            # Verify Google Drive quota
+            check_gdrive_quota()
             
         except Exception as e:
             send_alert(f"Monitor failed: {e}")
         
-        time.sleep(300)  # Check every 5 minutes
+        await asyncio.sleep(300)  # Check every 5 minutes
 ```
 
 ### 3. Graceful Degradation
 ```python
-# src/scrapers/resilient_scraper.py
-class ResilientScraper:
-    def scrape_all_departments(self):
-        results = []
-        failed_departments = []
-        
-        for dept in self.get_departments():
-            try:
-                data = self.scrape_department(dept)
-                results.extend(data)
-            except Exception as e:
-                logger.error(f"Failed to scrape {dept}: {e}")
-                failed_departments.append(dept)
-                continue  # Continue with next department
-        
-        # Report partial success
-        if failed_departments:
-            self.report_failures(failed_departments)
-        
-        return results
+# franchise_scrapers/mn/scraper.py
+async def scrape_all_pages(page: Page, max_pages: int = 50) -> List[Dict[str, Any]]:
+    all_data = []
+    page_num = 1
+    
+    while page_num <= max_pages:
+        try:
+            current_data = await extract_table_data(page)
+            all_data.extend(current_data)
+            
+            if not await click_load_more(page):
+                break
+                
+        except Exception as e:
+            logger.error(f"Failed on page {page_num}: {e}")
+            # Continue with next page instead of failing entirely
+            
+        page_num += 1
+        await asyncio.sleep(settings.THROTTLE_SEC)
+    
+    return all_data
 ```
 
 ## Emergency Procedures
@@ -658,11 +661,11 @@ class ResilientScraper:
    tail -n 1000 logs/fdd_pipeline_errors.log
    
    # Check database connectivity
-   psql $DATABASE_URL -c "SELECT 1"
+   python -c "from storage.database.manager import DatabaseManager; db = DatabaseManager(); print(db.test_connection())"
    
    # Verify external services
-   curl -I https://www.umn.edu
-   curl -I https://www.wisconsin.edu
+   curl -I https://www.cards.commerce.state.mn.us
+   curl -I https://apps.dfi.wi.gov
    ```
 
 3. **Recovery Steps:**
@@ -685,30 +688,30 @@ class ResilientScraper:
 ### Data Recovery
 ```python
 # scripts/recover_partial_data.py
-def recover_incomplete_scrape():
-    # Find incomplete runs
-    incomplete = db.query("""
-        SELECT DISTINCT flow_run_id, university
+async def recover_incomplete_scrape():
+    # Find incomplete FDD scrapes
+    incomplete = await db.query("""
+        SELECT DISTINCT flow_run_id, state_code
         FROM pipeline_logs
-        WHERE log_type = 'flow_started'
+        WHERE log_type = 'scrape_started'
         AND flow_run_id NOT IN (
             SELECT flow_run_id 
             FROM pipeline_logs 
-            WHERE log_type = 'flow_completed'
+            WHERE log_type = 'scrape_completed'
         )
         AND created_at > NOW() - INTERVAL '24 hours'
     """)
     
-    # Attempt to recover data
+    # Attempt to recover FDD data
     for run in incomplete:
-        partial_data = db.query(f"""
-            SELECT * FROM scraped_data
-            WHERE flow_run_id = '{run['flow_run_id']}'
+        partial_data = await db.query(f"""
+            SELECT * FROM fdds
+            WHERE metadata->>'flow_run_id' = '{run['flow_run_id']}'
         """)
         
         if partial_data:
-            save_to_backup(partial_data)
-            logger.info(f"Recovered {len(partial_data)} records from {run['flow_run_id']}")
+            await save_to_backup(partial_data)
+            logger.info(f"Recovered {len(partial_data)} FDDs from {run['flow_run_id']}")
 ```
 
 ## Support Escalation
@@ -743,19 +746,19 @@ Include:
 ### Quick Diagnostics
 ```bash
 # One-liner health check
-python -c "from scripts.health_check import run_all_checks; run_all_checks()"
+python scripts/health_check.py --all
 
 # Recent errors summary
 grep -E "(ERROR|CRITICAL)" logs/fdd_pipeline.log | tail -20 | cut -d' ' -f5- | sort | uniq -c
 
 # Performance check
-python -c "from src.utils.database import get_metrics; print(get_metrics('24h'))"
+python scripts/monitoring.py --metrics --period 24h
 
-# Test specific university
-python -m src.scrapers.test_scraper --university mn --quick
+# Test specific state scraper
+python -m franchise_scrapers.mn.scraper --test --max-pages 1
 
 # Force cleanup
-python scripts/cleanup.py --force --all
+rm -rf franchise_scrapers/downloads/*/temp_*
 ```
 
 ### Recovery Commands
@@ -763,11 +766,11 @@ python scripts/cleanup.py --force --all
 # Reset stuck flow
 prefect flow-run cancel <flow-run-id>
 
-# Clear queue
-prefect work-queue clear fdd-local-queue
+# Clear work pool
+prefect work-pool clear default-agent-pool
 
-# Restart from checkpoint
-python scripts/resume_scrape.py --flow-run-id <id> --from-checkpoint
+# Restart state scrape
+python main.py scrape --state mn --resume
 
-# Emergency data export
-python scripts/export_all_data.py --format csv --output /backup/
+# Emergency FDD export
+python -c "from storage.database.manager import DatabaseManager; db = DatabaseManager(); db.export_fdds('backup.csv')"

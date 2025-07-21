@@ -15,12 +15,16 @@ This is an automated Franchise Disclosure Document (FDD) processing pipeline tha
 
 ### Core Components
 
-1. **Web Scrapers** (`scrapers/`):
-   - `base/base_scraper.py`: Abstract base class with common scraping functionality (Playwright browser automation)
-   - `base/exceptions.py`: Custom exception hierarchy for error handling
-   - `states/minnesota.py`: Scrapes Minnesota CARDS portal
-   - `states/wisconsin.py`: Scrapes Wisconsin DFI portal
-   - `utils/scraping_utils.py`: Common scraping utilities
+1. **Web Scrapers** (NOTE: Architecture in transition):
+   - **Planned structure** (`scrapers/` - not yet implemented):
+     - `base/base_scraper.py`: Abstract base class with common scraping functionality
+     - `base/exceptions.py`: Custom exception hierarchy
+     - `states/minnesota.py`: MinnesotaScraper class
+     - `states/wisconsin.py`: WisconsinScraper class
+     - `utils/scraping_utils.py`: Common utilities
+   - **Current implementation** (`franchise_scrapers/`):
+     - `MN_Scraper.py`: Standalone Minnesota scraper
+     - `WI_Scraper.py`: Standalone Wisconsin scraper
 
 2. **Document Processing** (`processing/`):
    - `mineru/mineru_processing.py`: Task wrapper for MinerU Web API
@@ -167,25 +171,32 @@ MAX_CONCURRENT_EXTRACTIONS=5
 - Enhanced section detection: Enabled by default
 - Concurrent extractions: 5 (prevents rate limiting)
 
-## Refactoring Status (Completed)
+## Refactoring Status (In Progress)
 
-### Major Changes Implemented
-1. **State Scraping Flows Consolidated**:
-   - Created `flows/base_state_flow.py` with generic state scraping logic
-   - Created `flows/state_configs.py` for state-specific configurations
-   - Reduced ~1,200 lines to ~400 lines (67% reduction)
-   - Original flows now use base flow with deprecation warnings
+### Major Changes Planned
+1. **State Scraping Flows Consolidation**:
+   - Created `workflows/base_state_flow.py` with generic state scraping logic
+   - Created `workflows/state_configs.py` for state-specific configurations
+   - NOTE: These files expect `scrapers/` module structure that doesn't exist yet
+   - Current scrapers in `franchise_scrapers/` don't match expected architecture
 
 2. **Files Cleaned Up**:
-   - Deleted 3 duplicate test files
+   - Deleted duplicate test files
    - Archived individual migration files (kept combined versions)
    - Removed all .DS_Store files
    - Updated .gitignore to prevent future accumulation
 
 ### Adding New States
 To add a new state (e.g., California):
-1. Create scraper class: `scrapers/states/california.py` extending `BaseScraper`
-2. Add configuration to `workflows/state_configs.py`:
+
+**Option 1: Using current implementation**
+1. Create scraper file: `franchise_scrapers/CA_Scraper.py` following MN/WI pattern
+2. Implement standalone scraper with Playwright
+
+**Option 2: Using planned architecture (requires setup)**
+1. Create the missing `scrapers/` directory structure
+2. Create scraper class: `scrapers/states/california.py` extending `BaseScraper`
+3. Add configuration to `workflows/state_configs.py`:
    ```python
    CALIFORNIA_CONFIG = StateConfig(
        state_code="CA",
@@ -195,9 +206,8 @@ To add a new state (e.g., California):
        portal_name="CA DBO"
    )
    ```
-3. Update `STATE_CONFIGS` dictionary in `state_configs.py`
-4. Update `scrapers/states/__init__.py` to export the new scraper
-5. That's it! The state is now available in CLI and flows
+4. Update `STATE_CONFIGS` dictionary in `state_configs.py`
+5. Update `scrapers/states/__init__.py` to export the new scraper
 
 ## Performance Considerations
 
