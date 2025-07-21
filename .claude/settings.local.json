@@ -25,7 +25,8 @@
       "mcp__bright-data__scrape_as_markdown",
       "Bash(tree:*)",
       "Bash(dir:*)",
-      "Bash(.venvScriptspython.exe -m pytest tests/storage/test_google_drive.py::TestDriveManager::test_initialization -v)"
+      "Bash(.venvScriptspython.exe -m pytest tests/storage/test_google_drive.py::TestDriveManager::test_initialization -v)",
+      "Bash(pip install:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

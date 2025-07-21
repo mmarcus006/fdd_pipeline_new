@@ -8,7 +8,9 @@
 # Core dependencies from pyproject.toml
 prefect>=2.14.0
 playwright>=1.40.0
+selenium>=4.15.0
 beautifulsoup4>=4.12.0
+lxml>=4.9.0
 httpx>=0.25.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
