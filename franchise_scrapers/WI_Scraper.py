@@ -41,7 +41,7 @@ async def get_active_registrations(playwright: Playwright) -> list:
         raw_html = await page.content()
         soup = BeautifulSoup(raw_html, 'html.parser')
         table = soup.find('table', id='ctl00_contentPlaceholder_grdActiveFilings')
-        df = pd.read_html(str(table))[0]
+        df = pd.read_html(io.StringIO(str(table)))[0]
         print(f"Found {len(df)} active registrations")
         
         #SAVE REGISTRATIONS TO CSV in Google Drive
@@ -89,76 +89,104 @@ async def search_franchise_details(playwright: Playwright, franchise_names: list
     try:
         #GO TO MAIN SEARCH PAGE    
         for name in franchise_names:
-            print(f"Searching for: {name}")
-            await page.goto("https://apps.dfi.wi.gov/apps/FranchiseSearch/MainSearch.aspx", wait_until='networkidle')
-            await page.locator("#txtName").click()
-            await page.locator("#txtName").fill(name)
-            await page.get_by_role("button", name="(S)earch").click()
-            await page.wait_for_load_state('networkidle')
-
-            #Read the table of results into dataframe and extract hyperlinks
-            raw_html = await page.content()
-            soup = BeautifulSoup(raw_html, 'html.parser')
-            table = soup.find('table', id='grdSearchResults')
-            
-            # Get the DataFrame with text content
-            df = pd.read_html(str(table))[0]
-            print(f"Found {len(df)} search results")
-            
-            # Extract hyperlinks from the Details column using BeautifulSoup
-            details_links = []
-            table_rows = table.find_all('tr')[1:]  # Skip header row
-            
-            for tr in table_rows:
-                cells = tr.find_all('td')
-                if len(cells) >= 7:  # Make sure we have enough columns
-                    # The Details link is typically in the last column (index 6)
-                    details_cell = cells[6]
-                    link = details_cell.find('a')
-                    if link and link.get('href'):
-                        # Convert relative URL to absolute URL
-                        href = link.get('href')
-                        details_url = "https://apps.dfi.wi.gov/apps/FranchiseSearch/" + href
-                        details_links.append(details_url)
-                    else:
-                        details_links.append(None)  # No link found in this row
-                else:
-                    details_links.append(None)  # Row doesn't have enough columns
-            
-            # Add the extracted links to the DataFrame (one URL per row)
-            df['Details_URL'] = details_links[:len(df)]
-            
-            for index, row in df.iterrows():
-                print(f"Processing row {index + 1} of {len(df)}")
-                
-                # Check if we have a valid details URL
-                details_url = row.get('Details_URL')
-                if pd.isna(details_url) or details_url is None:
-                    print(f"No details URL found for {row.get('Legal Name', 'Unknown')}")
-                    continue
-                    
-                # Skip expired registrations if desired
-                if row['Expiration Date'] == "Expired":
-                    print(f"Skipping expired registration for {row.get('Legal Name', 'Unknown')}")
-                    continue
-                    
-                print("Processing row for: ", row['Legal Name'])
-                print(f"Details URL: {details_url}")
-                
-                filing_number = row['File Number']
-                legal_name = row['Legal Name'] 
-                trade_name = row['Trade Name']
-                effective_date = row['Effective Date']
-                expiration_date = row['Expiration Date']
-                filing_status = row['Status']
-                
-                # Navigate to the details page
-                await page.goto(details_url)
+            try:
+                print(f"Searching for: {name}")
+                await page.goto("https://apps.dfi.wi.gov/apps/FranchiseSearch/MainSearch.aspx", wait_until='networkidle')
+                await page.locator("#txtName").click()
+                await page.locator("#txtName").fill(name)
+                await page.get_by_role("button", name="(S)earch").click()  # Fixed button selector
                 await page.wait_for_load_state('networkidle')
-                await download_pdf(page, details_url, legal_name, trade_name, effective_date, filing_number)
+
+                #Read the table of results into dataframe and extract hyperlinks
+                raw_html = await page.content()
+                soup = BeautifulSoup(raw_html, 'html.parser')
+                table = soup.find('table', id='grdSearchResults')
+                
+                if not table:
+                    print(f"No search results table found for {name}")
+                    continue
+                
+                # Get the DataFrame with text content
+                try:
+                    df = pd.read_html(io.StringIO(str(table)))[0]
+                    print(f"Found {len(df)} search results")
+                except Exception as e:
+                    print(f"Error parsing table for {name}: {e}")
+                    continue
+                
+                # Extract hyperlinks from the Details column using BeautifulSoup
+                details_links = []
+                table_rows = table.find_all('tr')[1:]  # Skip header row
+                
+                for tr in table_rows:
+                    cells = tr.find_all('td')
+                    if len(cells) >= 7:  # Make sure we have enough columns
+                        # The Details link is typically in the last column (index 6)
+                        details_cell = cells[6]
+                        link = details_cell.find('a')
+                        if link and link.get('href'):
+                            # Convert relative URL to absolute URL
+                            href = link.get('href')
+                            details_url = "https://apps.dfi.wi.gov/apps/FranchiseSearch/" + href
+                            details_links.append(details_url)
+                        else:
+                            details_links.append(None)  # No link found in this row
+                    else:
+                        details_links.append(None)  # Row doesn't have enough columns
+                
+                # Add the extracted links to the DataFrame (one URL per row)
+                df['Details_URL'] = details_links[:len(df)]
+                
+                for index, row in df.iterrows():
+                    try:
+                        print(f"Processing row {index + 1} of {len(df)}")
+                        
+                        # Check if we have a valid details URL
+                        details_url = row.get('Details_URL')
+                        if pd.isna(details_url) or details_url is None:
+                            print(f"No details URL found for {row.get('Legal Name', 'Unknown')}")
+                            continue
+                            
+                        # Skip expired registrations if desired
+                        if row['Expiration Date'] == "Expired":
+                            print(f"Skipping expired registration for {row.get('Legal Name', 'Unknown')}")
+                            continue
+                            
+                        print("Processing row for: ", row['Legal Name'])
+                        print(f"Details URL: {details_url}")
+                        
+                        filing_number = row['File Number']
+                        legal_name = row['Legal Name'] 
+                        trade_name = row['Trade Name']
+                        effective_date = row['Effective Date']
+                        expiration_date = row['Expiration Date']
+                        filing_status = row['Status']
+                        
+                        # Navigate to the details page
+                        await page.goto(details_url)
+                        await page.wait_for_load_state('networkidle')
+                        await download_pdf(page, details_url, legal_name, trade_name, effective_date, filing_number)
+                        
+                    except Exception as row_error:
+                        print(f"Error processing row for {row.get('Legal Name', 'Unknown')}: {row_error}")
+                        continue
+                        
+            except Exception as name_error:
+                print(f"Error processing franchise {name}: {name_error}")
+                continue
+                
+    except KeyboardInterrupt:
+        print("Script interrupted by user. Cleaning up...")
+        raise
+    except Exception as e:
+        print(f"Unexpected error in search_franchise_details: {e}")
+        raise
     finally:
-                await context.close()
-                await browser.close()
+        try:
+            await context.close()
+            await browser.close()
+        except Exception as cleanup_error:
+            print(f"Error during cleanup: {cleanup_error}")
 
 
 async def download_pdf(page, details_url: str, legal_name: str, trade_name: str, effective_date: str, filing_number: str) -> None:
@@ -172,10 +200,23 @@ async def download_pdf(page, details_url: str, legal_name: str, trade_name: str,
     try:
         print(f"Attempting to download PDF for {legal_name} (Filing: {filing_number})")
         
-        # Check if download button exists
-        download_button = page.locator("button:has-text('Download'), input[value*='Download'], a:has-text('Download')")
+        # Check if download button exists with multiple selectors
+        download_selectors = [
+            "button:has-text('Download')",
+            "input[value*='Download']", 
+            "a:has-text('Download')",
+            "#btnDownload",
+            "input[type='submit'][value*='Download']"
+        ]
         
-        if await download_button.count() > 0:
+        download_button = None
+        for selector in download_selectors:
+            button = page.locator(selector)
+            if await button.count() > 0:
+                download_button = button
+                break
+        
+        if download_button:
             # Start waiting for the download
             async with page.expect_download() as download_info:
                 # Perform the action that initiates download
@@ -184,19 +225,46 @@ async def download_pdf(page, details_url: str, legal_name: str, trade_name: str,
             
             # Format the date from effective_date (assuming format like "2024-12-01")
             try:
-                date_obj = datetime.strptime(effective_date, '%Y-%m-%d')
-                formatted_date = date_obj.strftime('%Y-%d-%m')  # YYYY-DD-mm format as requested
-            except:
+                # Convert to string in case it's an integer or other type
+                effective_date_str = str(effective_date)
+                # Try different date formats
+                try:
+                    date_obj = datetime.strptime(effective_date_str, '%Y-%m-%d')
+                except ValueError:
+                    try:
+                        date_obj = datetime.strptime(effective_date_str, '%m/%d/%Y')
+                    except ValueError:
+                        # If parsing fails, use current date
+                        date_obj = datetime.now()
+                formatted_date = date_obj.strftime('%Y-%m-%d')  # YYYY-MM-DD format
+            except Exception as date_error:
+                print(f"Date parsing error: {date_error}")
                 # If date parsing fails, use the original effective_date
-                formatted_date = effective_date.replace('/', '-')
+                formatted_date = str(effective_date).replace('/', '-')
             
             # Create filename with new convention: "Trade Name"_"effective date"_"File Number"_State.pdf
-            safe_trade_name = re.sub(r'[<>:"/\\|?*]', '_', trade_name)
-            safe_file_number = re.sub(r'[<>:"/\\|?*]', '_', filing_number)
+            # Handle None/NaN values and convert to strings safely
+            try:
+                if pd.isna(trade_name) or trade_name is None or str(trade_name).strip() == '' or str(trade_name).lower() == 'nan':
+                    trade_name_clean = str(legal_name)
+                else:
+                    trade_name_clean = str(trade_name)
+                safe_trade_name = re.sub(r'[<>:"/\\|?*]', '_', trade_name_clean)
+            except Exception:
+                safe_trade_name = re.sub(r'[<>:"/\\|?*]', '_', str(legal_name))
+            
+            try:
+                if pd.isna(filing_number) or filing_number is None or str(filing_number).lower() == 'nan':
+                    safe_file_number = "UNKNOWN"
+                else:
+                    safe_file_number = re.sub(r'[<>:"/\\|?*]', '_', str(filing_number))
+            except Exception:
+                safe_file_number = "UNKNOWN"
+            
             filename = f"{safe_trade_name}_{formatted_date}_{safe_file_number}_WI.pdf"
             
             # Download to temporary location first
-            temp_path = Path(download.path())
+            temp_path = Path(await download.path())
             
             try:
                 # Read the downloaded file
@@ -231,11 +299,16 @@ async def download_pdf(page, details_url: str, legal_name: str, trade_name: str,
         print(f"[ERROR] Error downloading PDF for {legal_name}: {e}")
 
 
-async def run(playwright: Playwright) -> None:
+async def run(playwright: Playwright, max_franchises: int = None) -> None:
     """Main function that orchestrates both scraping operations."""
     
     # First, get the list of active registrations
     franchise_names = await get_active_registrations(playwright)
+    
+    # Limit the number of franchises for testing if specified
+    if max_franchises:
+        franchise_names = franchise_names[:max_franchises]
+        print(f"Limited to first {max_franchises} franchises for testing")
     
     # Then search for detailed information on each franchise
     await search_franchise_details(playwright, franchise_names)
@@ -243,9 +316,31 @@ async def run(playwright: Playwright) -> None:
 
 if __name__ == "__main__":
     import asyncio
+    import signal
+    import sys
+    
+    def signal_handler(sig, frame):
+        print('\nScript interrupted by user (Ctrl+C). Exiting gracefully...')
+        sys.exit(0)
+    
+    # Set up signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
     
     async def main():
-        async with async_playwright() as playwright:
-            await run(playwright)
+        try:
+            async with async_playwright() as playwright:
+                # Limit to 10 franchises for testing - remove max_franchises parameter to process all
+                await run(playwright, max_franchises=10)
+        except KeyboardInterrupt:
+            print("\nScript interrupted by user. Shutting down gracefully...")
+        except Exception as e:
+            print(f"Unexpected error in main: {e}")
+            raise
     
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nShutdown complete.")
+    except Exception as e:
+        print(f"Failed to run main: {e}")
+        sys.exit(1)
