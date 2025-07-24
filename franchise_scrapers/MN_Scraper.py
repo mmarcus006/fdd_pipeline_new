@@ -257,11 +257,17 @@ async def download_pdf(page, document_url: str, franchisor: str, year: str, file
         print(f"[ERROR] Error accessing document for {franchisor}: {e}")
 
 #TODO: ADD A CHECK TO SEE IF THE PDF HAS ALREADY BEEN DOWNLOADED
+
 #TODO: ADD A CHECK TO SEE IF THE PDF HAS ALREADY BEEN UPLOADED TO GOOGLE DRIVe
-todo: need to run ssh check against all pdfs both currently uploaded and about to upload
+
+#TODO: need to run ssh check against all pdfs both currently uploaded and about to upload
+
 #TODO: need to change this from playwright to straight requests to speed up process.
+
 #TODO: create a utils script/function that loops through every pdf currently saved and calculates ssh value and then deletes duplicates, but does on a induvidual folder basis and then as a total for the database.
+
 #TODO: NEED TO MODIFY DATABASE SCHEMA AND PYDANTIC SCHEMAS TO MATGCH (MIN AMOUNT OF DATA)
+
 async def download_all_pdfs(df):
     """Download all PDFs from the registration DataFrame."""
     

@@ -34,7 +34,8 @@ from .item21_financials import (
 )
 
 # Operational models
-from .scrape_metadata import ScrapeMetadata, ScrapeMetadataBase
+from .scrape_metadata import ScrapeMetadata, ScrapeMetadataBase, ScrapeMetadataCreate, ScrapeStatus
+from .drive_files import DriveFile, DriveFileCreate, SyncStatus
 from .pipeline_log import (
     PipelineLog,
     PipelineLogBase,
@@ -127,6 +128,11 @@ __all__ = [
     # Operational models
     "ScrapeMetadata",
     "ScrapeMetadataBase",
+    "ScrapeMetadataCreate",
+    "ScrapeStatus",
+    "DriveFile",
+    "DriveFileCreate",
+    "SyncStatus",
     "PipelineLog",
     "PipelineLogBase",
     "PrefectRun",

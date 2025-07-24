@@ -11,55 +11,12 @@ from pathlib import Path
 
 from utils.logging import PipelineLogger
 
-# Import base classes - note these may need adjustment based on actual imports
-try:
-    from src.processing.enhanced_fdd_section_detector_claude import (
-        EnhancedFDDSectionDetector,
-        FDDSectionCandidate,
-        SectionBoundary,
-    )
-except ImportError:
-    # Fallback for testing when src module isn't available
-    from dataclasses import dataclass
-    
-    @dataclass
-    class SectionBoundary:
-        item_no: int
-        item_name: str
-        start_page: int
-        end_page: int
-        confidence: float = 0.0
-    
-    @dataclass
-    class FDDSectionCandidate:
-        item_no: int
-        item_name: str
-        page_num: int
-        confidence: float
-        detection_method: str
-    
-    class EnhancedFDDSectionDetector:
-        def __init__(self, confidence_threshold=0.7, min_fuzzy_score=80):
-            self.confidence_threshold = confidence_threshold
-            self.min_fuzzy_score = min_fuzzy_score
-        
-        def _create_section_boundaries(self, candidates, total_pages=None):
-            # Mock implementation for testing
-            boundaries = []
-            for i, candidate in enumerate(candidates):
-                end_page = candidates[i+1].page_num - 1 if i < len(candidates)-1 else (total_pages or candidate.page_num + 5)
-                boundaries.append(SectionBoundary(
-                    item_no=candidate.item_no,
-                    item_name=candidate.item_name,
-                    start_page=candidate.page_num,
-                    end_page=end_page,
-                    confidence=candidate.confidence
-                ))
-            return boundaries
-        
-        def detect_sections_from_mineru_json(self, json_path, total_pages=None):
-            # Mock implementation
-            return []
+# Import base classes from the correct path
+from processing.segmentation.enhanced_fdd_section_detector_claude import (
+    EnhancedFDDSectionDetector,
+    FDDSectionCandidate,
+    SectionBoundary,
+)
 
 # Configure module-level logging
 logger = logging.getLogger(__name__)

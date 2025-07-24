@@ -1,8 +1,12 @@
 # System Overview
 
+> **⚠️ CRITICAL STATUS**: The system is currently in a transitional architectural state with import mismatches that prevent workflow orchestration from functioning. See [Architecture Issues](#critical-architecture-issues) below.
+
 ## Executive Summary
 
 The FDD Pipeline is an automated document intelligence system that transforms unstructured Franchise Disclosure Documents (FDDs) into structured, queryable data. It combines web scraping, document analysis, AI-powered extraction, and cloud storage to create a comprehensive franchise intelligence platform.
+
+**Current Status**: Core components are functional individually, but workflow orchestration is blocked by architectural inconsistencies between expected `scrapers/` module structure and actual `franchise_scrapers/` implementation.
 
 ## System Goals
 
@@ -14,7 +18,7 @@ The FDD Pipeline is an automated document intelligence system that transforms un
 5. **Accessibility**: Provide clean APIs for downstream applications
 
 ### Key Metrics
-- **Processing Throughput**: 100+ FDDs per day
+- **Processing Throughput**: 100+ FDDs per day (target - currently limited by architectural issues)
 - **Extraction Accuracy**: >95% for structured sections
 - **System Uptime**: 99.5% availability
 - **End-to-End Latency**: <10 minutes per document
@@ -89,27 +93,49 @@ graph TB
     API --> AN
 ```
 
+## Critical Architecture Issues
+
+### 🚨 Import Mismatches
+Multiple files expect a `scrapers/` module that doesn't exist:
+- `workflows/state_configs.py:4-5` - imports `MinnesotaScraper`, `WisconsinScraper`
+- `workflows/base_state_flow.py` - expects modular scraper architecture
+- `tasks/document_metadata.py` - broken scraper imports
+- Multiple test files in `tests/scrapers/` - test non-existent scrapers
+
+**Impact**: Workflow orchestration cannot function, tests fail
+
+### 🔄 Dual Scraper Implementations
+- **Working**: Standalone scripts in `franchise_scrapers/` (`MN_Scraper.py`, `WI_Scraper.py`)
+- **New**: Database-integrated versions (`MN_Scraper_DB.py`, `WI_Scraper_DB.py`)
+- **Planned**: Modular packages in subdirectories (`mn/`, `wi/`) - unused
+- **Expected**: Module structure in non-existent `scrapers/` directory
+
 ## Core Components
 
 ### 1. Acquisition Subsystem
 
 **Purpose**: Automated collection of FDD documents from various sources.
 
+**Current Status**: ⚠️ **Partially Functional** - Individual scrapers work, orchestration broken
+
 **Key Components**:
-- **State-Specific Scrapers**: Custom Playwright/httpx scripts per portal
-- **Download Manager**: Handles file downloads with retry logic
-- **Deduplication Engine**: Prevents duplicate processing using fuzzy matching
+- **State-Specific Scrapers**: Custom Playwright scripts per portal (functional)
+- **Download Manager**: Handles file downloads with retry logic (functional)
+- **Deduplication Engine**: Prevents duplicate processing using fuzzy matching (functional)
+- **Workflow Orchestration**: Prefect-based automation (**broken due to import issues**)
 
 **Data Flow**:
-1. Scrapers poll state portals on schedule
-2. Extract metadata and download URLs
-3. Download PDFs directly to Google Drive
-4. Check for duplicates using embeddings
-5. Register new documents in database
+1. Scrapers poll state portals on schedule (**manual execution only**)
+2. Extract metadata and download URLs (functional)
+3. Download PDFs directly to Google Drive (functional)
+4. Check for duplicates using embeddings (functional)
+5. Register new documents in database (functional)
 
 ### 2. Document Processing Subsystem
 
 **Purpose**: Transform PDFs into structured, section-based data.
+
+**Current Status**: ✅ **Functional** - All components working individually
 
 **Processing Pipeline**:
 
@@ -132,13 +158,15 @@ sequenceDiagram
 ```
 
 **Key Technologies**:
-- **MinerU**: AI-powered layout analysis
-- **Section Detection**: Rule-based + ML hybrid approach
-- **LLM Routing**: Model selection based on complexity
+- **MinerU Web API**: Cloud-based AI-powered layout analysis (functional)
+- **Enhanced Section Detection**: Claude-based + rule-based hybrid (functional)
+- **LLM Routing**: Multi-model selection (Gemini/OpenAI/Ollama) (functional)
 
 ### 3. Validation Subsystem
 
 **Purpose**: Ensure data quality and consistency.
+
+**Current Status**: ✅ **Functional** - All validation layers implemented
 
 **Validation Layers**:
 
@@ -149,6 +177,8 @@ sequenceDiagram
 | Quality | Completeness | Missing data, OCR quality | Score/Alert |
 
 ### 4. Storage Architecture
+
+**Current Status**: ✅ **Fully Functional** - All storage components working
 
 **Document Storage (Google Drive)**:
 ```
@@ -165,9 +195,11 @@ sequenceDiagram
 ```
 
 **Data Storage (PostgreSQL/Supabase)**:
-- Normalized tables for Items 5, 6, 7, 19, 20, 21
-- JSON storage for other sections
-- Full audit trail and versioning
+- ✅ **161 Pydantic models** for complete FDD data structure
+- ✅ **Normalized tables** for Items 5, 6, 7, 19, 20, 21 with detailed schemas
+- ✅ **JSON storage** for Items 1-4, 8-18, 22-24 via `fdd_item_json` table
+- ✅ **Full audit trail** with `scrape_metadata` and `pipeline_logs`
+- ✅ **Document versioning** with supersession tracking
 
 ## System Interactions
 
@@ -177,9 +209,9 @@ sequenceDiagram
 3. **Manual Uploads**: Direct document submission
 
 ### Asynchronous Operations
-1. **Scheduled Scraping**: Weekly portal checks
-2. **Document Processing**: Queue-based extraction
-3. **Batch Validation**: Nightly quality checks
+1. **Scheduled Scraping**: Weekly portal checks (**currently manual due to orchestration issues**)
+2. **Document Processing**: Queue-based extraction (functional via individual task execution)
+3. **Batch Validation**: Nightly quality checks (functional)
 
 ## Security & Compliance
 
@@ -258,10 +290,23 @@ graph LR
 3. **Corruption**: Reprocess from raw documents
 4. **Security Breach**: Rotate all credentials
 
-## Future Architecture Evolution
+## Current Development Priorities
+
+### Immediate (Critical)
+1. **🚨 Fix Import Architecture** - Resolve scraper module mismatch
+   - Either complete the scraper refactoring or update imports
+   - Restore workflow orchestration functionality
+2. **🔧 Consolidate Scraper Architecture** - Choose one implementation pattern
+3. **📝 Implement Missing PDF Processing** - Complete `process-pdf` workflow
+
+### Short Term (1-2 months)
+- Fix test suite to match current structure
+- Complete API endpoints for data access
+- Add comprehensive error handling
+- Implement incremental scraping (only new documents)
 
 ### Phase 2 (6 months)
-- Additional state portals
+- Additional state portals (CA, NY, IL)
 - Real-time processing pipeline
 - Advanced deduplication ML
 - Public API gateway
@@ -288,15 +333,17 @@ graph LR
 
 ## Technology Stack Summary
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Orchestration | Prefect | Workflow management |
-| Web Scraping | Playwright | Browser automation |
-| Storage | Google Drive | Document storage |
-| Database | Supabase/PostgreSQL | Structured data |
-| AI/ML | Gemini/Ollama | Text extraction |
-| API | FastAPI | Internal services |
-| Monitoring | Prefect + Custom | System observability |
+| Layer | Technology | Purpose | Status |
+|-------|------------|---------|---------|
+| Orchestration | Prefect 2.14+ | Workflow management | ⚠️ Broken imports |
+| Web Scraping | Playwright 1.40+ | Browser automation | ✅ Functional |
+| Document Processing | MinerU Web API | PDF layout analysis | ✅ Functional |
+| AI/ML | Gemini/OpenAI/Ollama | Text extraction | ✅ Functional |
+| Storage | Google Drive | Document storage | ✅ Functional |
+| Database | Supabase/PostgreSQL | Structured data | ✅ Functional |
+| API | FastAPI 0.104+ | Internal services | ✅ Functional |
+| Data Models | Pydantic 2.5+ | 161 model classes | ✅ Functional |
+| Development | uv, Black, MyPy | Code quality | ✅ Functional |
 
 ---
 

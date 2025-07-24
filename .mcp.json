@@ -1,10 +1,8 @@
 {
   "mcpServers": {
     "Context7": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@upstash/context7-mcp@latest"
       ],
@@ -18,10 +16,8 @@
       "description": "Fetch MCP server for HTTP requests"
     },
     "supabase": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@supabase/mcp-server-supabase@latest"
       ],
@@ -31,10 +27,8 @@
       "description": "Supabase MCP server for database operations"
     },
     "supabase-with-token": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@supabase/mcp-server-supabase@latest",
         "--access-token",
@@ -43,10 +37,8 @@
       "description": "Alternative Supabase configuration with inline token"
     },
     "openmemory": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "openmemory"
       ],
@@ -57,10 +49,8 @@
       "description": "OpenMemory MCP server for memory persistence"
     },
     "openmemory-cursor": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "openmemory"
       ],
@@ -71,10 +61,8 @@
       "description": "OpenMemory MCP server configured for Cursor"
     },
     "JinaAI": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "jina-ai-mcp-server"
       ],
@@ -84,10 +72,8 @@
       "description": "Jina AI MCP server for AI-powered search and analysis"
     },
     "Exa": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "exa-mcp-server"
       ],
@@ -97,20 +83,16 @@
       "description": "Exa MCP server for advanced search capabilities"
     },
     "puppeteer": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@modelcontextprotocol/server-puppeteer"
       ],
       "description": "Puppeteer MCP server for browser automation"
     },
     "playwright": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "@playwright/mcp@latest"
       ],
       "description": "Playwright MCP server for cross-browser automation"
@@ -118,18 +100,16 @@
     "markdownify": {
       "command": "node",
       "args": [
-        "C:\\projects\\markdownify-mcp\\dist\\index.js"
+        "/projects/markdownify-mcp/dist/index.js"
       ],
       "env": {
-        "UV_PATH": "C:\\Users\\Miller\\.local\\bin\\uv.exe"
+        "UV_PATH": "/home/miller/.local/bin/uv"
       },
       "description": "Markdownify MCP server for markdown processing"
     },
     "airtable": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "airtable-mcp-server"
       ],
@@ -139,10 +119,8 @@
       "description": "Airtable MCP server for database operations"
     },
     "firecrawl": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "firecrawl-mcp"
       ],
@@ -150,15 +128,6 @@
         "FIRECRAWL_API_KEY": "fc-71fe55b5a8544a4abee21a27f98d160f"
       },
       "description": "Firecrawl MCP server for web scraping"
-    }
-  },
-  "metadata": {
-    "generated": "2025-07-16T00:28:32Z",
-    "source": "Combined from Claude Desktop, Claude Code, Gemini CLI, and Cursor configurations",
-    "notes": {
-      "platform_compatibility": "Some servers may require platform-specific adjustments (e.g., 'cmd /c' prefix on Windows)",
-      "api_keys": "API keys and tokens included are from existing configurations - please verify and update as needed",
-      "duplicate_servers": "Some servers appear with different configurations (e.g., supabase, openmemory) - both versions included"
     }
   }
 }

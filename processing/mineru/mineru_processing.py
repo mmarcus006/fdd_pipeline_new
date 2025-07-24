@@ -9,7 +9,7 @@ import json
 import requests
 import shutil
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, List
 from uuid import UUID
 from datetime import datetime
 import asyncio
@@ -21,6 +21,7 @@ from config import get_settings
 from utils.logging import PipelineLogger
 from storage.google_drive import get_drive_manager
 from models.section import FDDSection
+from models.document_models import SectionBoundary
 
 
 class MinerUProcessor:
@@ -216,10 +217,33 @@ class MinerUProcessor:
             results, fdd_uuid, franchise_name
         )
 
+        # Also provide local file paths for section detection
+        local_json_path = None
+        if results.get("json_url"):
+            # The JSON file should be downloaded locally as well
+            # Construct the local path based on the download pattern
+            from pathlib import Path
+            local_download_dir = Path(self.settings.project_root) / "mineru_downloads"
+            local_json_filename = f"{franchise_name.replace(' ', '_')}_layout.json"
+            local_json_path = str(local_download_dir / local_json_filename)
+            
+            # If the file doesn't exist locally, download it
+            if not Path(local_json_path).exists():
+                local_download_dir.mkdir(exist_ok=True)
+                json_content = await self._download_file(results["json_url"])
+                with open(local_json_path, 'wb') as f:
+                    f.write(json_content)
+                self.logger.info(
+                    "Downloaded MinerU JSON locally for section detection",
+                    local_path=local_json_path,
+                    size=len(json_content)
+                )
+
         return {
             "task_id": task_id,
             "mineru_results": results,
             "drive_files": drive_results,
+            "local_json_path": local_json_path,  # Add local path for section detection
             "fdd_uuid": str(fdd_uuid),
             "processed_at": datetime.utcnow().isoformat(),
         }
@@ -425,11 +449,27 @@ async def process_document_with_mineru(
             wait_time=timeout_seconds,
         )
 
+        # Try to get page count from the JSON if available
+        total_pages = None
+        if results.get("local_json_path") and Path(results["local_json_path"]).exists():
+            try:
+                with open(results["local_json_path"], 'r') as f:
+                    json_data = json.load(f)
+                    if "pdf_info" in json_data:
+                        total_pages = len(json_data["pdf_info"])
+                        logger.info(f"Detected {total_pages} pages in PDF from MinerU JSON")
+            except Exception as e:
+                logger.warning(f"Could not extract page count from MinerU JSON: {e}")
+        
+        results["total_pages"] = total_pages
+
         logger.info(
             "MinerU processing completed",
             task_id=results["task_id"],
             markdown_file_id=results["drive_files"].get("markdown", {}).get("file_id"),
             json_file_id=results["drive_files"].get("json", {}).get("file_id"),
+            local_json_path=results.get("local_json_path"),
+            total_pages=total_pages,
         )
 
         return results
@@ -441,52 +481,105 @@ async def process_document_with_mineru(
 
 @task(name="extract_sections_from_mineru", retries=1)
 async def extract_sections_from_mineru(
-    mineru_results: Dict[str, Any], fdd_id: UUID
-) -> List[FDDSection]:
+    mineru_json_path: str, fdd_id: UUID, total_pages: Optional[int] = None
+) -> List[SectionBoundary]:
     """
-    Extract FDD sections from MinerU processing results.
-
-    This is a placeholder that returns basic section info.
-    The actual section detection happens in the enhanced detector.
+    Extract FDD sections from MinerU processing results using enhanced detection.
 
     Args:
-        mineru_results: Results from MinerU processing
+        mineru_json_path: Path to the MinerU JSON layout file
         fdd_id: FDD document ID
+        total_pages: Total number of pages in the document
 
     Returns:
-        List of FDD sections (basic structure)
+        List of detected section boundaries
     """
     logger = PipelineLogger("extract_sections_from_mineru").bind(fdd_id=str(fdd_id))
 
     try:
-        # For now, return a single section covering the whole document
-        # The enhanced detector will handle actual section detection
-        sections = [
-            FDDSection(
-                fdd_id=fdd_id,
-                item_no=0,
-                item_name="Complete Document",
-                start_page=1,
-                end_page=1,  # Will be updated by enhanced detector
-                page_count=1,
-                mineru_json_path=mineru_results["drive_files"]
-                .get("json", {})
-                .get("drive_path"),
-                extraction_status="pending",
-                confidence_score=1.0,
-            )
-        ]
-
         logger.info(
-            "Created placeholder sections for MinerU results",
-            section_count=len(sections),
+            "Starting enhanced section detection",
+            json_path=mineru_json_path,
+            total_pages=total_pages,
         )
 
-        return sections
+        # Import and use the enhanced detector
+        from processing.segmentation.enhanced_fdd_section_detector_claude import (
+            EnhancedFDDSectionDetector
+        )
+        
+        # Initialize the detector with appropriate thresholds
+        detector = EnhancedFDDSectionDetector(
+            confidence_threshold=0.5,  # Lower threshold for more matches
+            min_fuzzy_score=75,  # Allow some fuzzy matching flexibility
+        )
+        
+        # Detect sections from MinerU JSON
+        section_boundaries = detector.detect_sections_from_mineru_json(
+            mineru_json_path=mineru_json_path,
+            total_pages=total_pages,
+        )
+        
+        logger.info(
+            "Enhanced section detection completed",
+            sections_detected=len(section_boundaries),
+            section_items=[s.item_no for s in section_boundaries],
+        )
+        
+        # Log detected sections for debugging
+        for section in section_boundaries:
+            logger.debug(
+                f"Section detected",
+                item_no=section.item_no,
+                item_name=section.item_name,
+                start_page=section.start_page,
+                end_page=section.end_page,
+                confidence=section.confidence,
+            )
+
+        return section_boundaries
 
     except Exception as e:
-        logger.error("Failed to extract sections from MinerU", error=str(e))
-        raise
+        logger.error("Failed to extract sections from MinerU", error=str(e), json_path=mineru_json_path)
+        
+        # Fallback to basic sections if enhanced detection fails
+        logger.warning("Falling back to basic section structure")
+        from models.document_models import SectionBoundary
+        
+        # Create basic section structure covering major FDD items
+        fallback_sections = []
+        pages_per_section = max(3, (total_pages or 75) // 25)
+        
+        standard_items = {
+            0: "Cover/Introduction",
+            1: "The Franchisor",
+            5: "Initial Fees",
+            6: "Other Fees", 
+            7: "Estimated Initial Investment",
+            11: "Franchisor's Assistance",
+            17: "Renewal, Termination, Transfer",
+            19: "Financial Performance Representations",
+            20: "Outlets and Franchisee Information",
+            21: "Financial Statements",
+            23: "Receipts",
+        }
+        
+        current_page = 1
+        for item_no, item_name in standard_items.items():
+            end_page = min(current_page + pages_per_section - 1, total_pages or 75)
+            fallback_sections.append(
+                SectionBoundary(
+                    item_no=item_no,
+                    item_name=item_name,
+                    start_page=current_page,
+                    end_page=end_page,
+                    confidence=0.3,  # Low confidence for fallback
+                )
+            )
+            current_page = end_page + 1
+            
+        logger.info(f"Created {len(fallback_sections)} fallback sections")
+        return fallback_sections
 
 
 if __name__ == "__main__":

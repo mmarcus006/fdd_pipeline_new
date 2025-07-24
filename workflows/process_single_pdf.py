@@ -185,14 +185,19 @@ async def detect_fdd_sections(
     logger = get_run_logger()
     
     try:
-        # Extract sections from MinerU JSON
+        # Extract sections from MinerU JSON using local path
+        local_json_path = mineru_result.get("local_json_path")
+        if not local_json_path:
+            logger.error("No local JSON path available from MinerU processing")
+            raise ValueError("MinerU processing did not provide local JSON path")
+            
         sections = await extract_sections_from_mineru(
-            mineru_json_path=mineru_result["drive_files"]["json"]["path"],
+            mineru_json_path=local_json_path,
             fdd_id=UUID(fdd_id),
             total_pages=mineru_result.get("total_pages", 100),
         )
         
-        logger.info(f"Detected {len(sections)} sections")
+        logger.info(f"Detected {len(sections)} sections from MinerU JSON")
         
         # Store sections in database
         db_manager = get_database_manager()
